@@ -1,0 +1,1 @@
+The two audio loops were procedurally created for Anban. Released under CC0-1.0.

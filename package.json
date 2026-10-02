@@ -1,0 +1,16 @@
+{
+  "name": "anban",
+  "version": "1.0.0",
+  "private": true,
+  "description": "安伴 Flutter 应用与 Go 后端的开发入口",
+  "engines": {
+    "node": ">=22.9.0"
+  },
+  "scripts": {
+    "android": "node scripts/run-mobile.mjs android",
+    "ios": "node scripts/run-mobile.mjs ios",
+    "web": "cd mobile && flutter run -d chrome --web-port 7357",
+    "backend": "node --env-file-if-exists=.env scripts/run-backend.mjs",
+    "test:scripts": "node --test scripts/run.test.mjs"
+  }
+}

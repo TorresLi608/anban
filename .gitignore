@@ -1,0 +1,6 @@
+backend/data/
+backend/anban
+.env
+*.anban
+*.log
+.DS_Store
