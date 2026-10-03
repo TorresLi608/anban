@@ -73,6 +73,10 @@ class AnbanApp extends StatelessWidget {
     builder: (_, _) => MaterialApp(
       title: '安伴 · 居家照护',
       debugShowCheckedModeBanner: false,
+      scrollBehavior: const MaterialScrollBehavior().copyWith(
+        overscroll: false,
+        physics: const ClampingScrollPhysics(),
+      ),
       locale: const Locale('zh', 'CN'),
       supportedLocales: const [Locale('zh', 'CN')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
@@ -397,7 +401,7 @@ class _CareShellState extends State<CareShell> with WidgetsBindingObserver {
                           wide ? 40 : 22,
                           wide ? 36 : 26,
                           wide ? 40 : 22,
-                          120,
+                          24,
                         ),
                         child: Align(
                           alignment: Alignment.topCenter,

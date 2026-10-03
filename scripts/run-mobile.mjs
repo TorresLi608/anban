@@ -9,7 +9,18 @@ function fail(message) {
   process.exit(1);
 }
 
-if (!['android', 'ios'].includes(platform)) fail('请选择 android 或 ios。');
+if (!['android', 'ios', 'web'].includes(platform)) fail('请选择 android、ios 或 web。');
+
+function launch(device, extra = []) {
+  const fallback = platform === 'android' && device.emulator
+    ? 'http://10.0.2.2:8024' : 'http://localhost:8024';
+  const api = process.env.ANBAN_API_URL?.trim() || fallback;
+  const result = spawnSync('flutter', ['run', '-d', device.id, ...extra, `--dart-define=ANBAN_API_URL=${api}`], { cwd, stdio: 'inherit' });
+  if (result.error) fail(`Flutter 启动失败：${result.error.message}`);
+  process.exit(result.status ?? 1);
+}
+
+if (platform === 'web') launch({ id: 'chrome' }, ['--web-port', '7357']);
 
 const discovery = spawnSync('flutter', ['devices', '--machine'], {
   cwd,
@@ -36,6 +47,4 @@ if (devices.length !== 1) {
     : `检测到多个 ${platform} 设备，请指定：npm run ${platform} -- <设备ID>\n${devices.map((d) => `${d.id}  ${d.name}`).join('\n')}`);
 }
 
-const result = spawnSync('flutter', ['run', '-d', devices[0].id], { cwd, stdio: 'inherit' });
-if (result.error) fail(`Flutter 启动失败：${result.error.message}`);
-process.exit(result.status ?? 1);
+launch(devices[0]);

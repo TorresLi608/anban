@@ -91,7 +91,7 @@ class HomePage extends StatelessWidget {
           '喝水提醒',
           trailing: TextButton(
             onPressed: () => openSettings(context, store, reminders),
-            child: Text(waterTimes(settings).isEmpty ? '创建' : '设置'),
+            child: const Text('设置'),
           ),
           child: Surface(
             child: Text(

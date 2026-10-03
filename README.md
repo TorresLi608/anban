@@ -49,13 +49,79 @@ flutter build web --no-web-resources-cdn
 python3 -m http.server 7357 --bind 127.0.0.1 --directory build/web
 ```
 
+## Android 模拟器连接本机后端
+
+`ANBAN_ADDR` 是 Go 后端的监听地址，例如 `127.0.0.1:8024`，不要填写 `http://`。`ANBAN_API_URL` 是客户端访问的完整URL；Android模拟器连接电脑使用 `http://10.0.2.2:8024`，不是模拟器自己的 `localhost`。
+
+```dotenv
+ANBAN_ADDR=127.0.0.1:8024
+ANBAN_API_URL=http://10.0.2.2:8024
+```
+
+`npm run android`、`npm run ios`、`npm run web` 会读取根目录 `.env`，只将 `ANBAN_API_URL` 作为 Dart 编译参数传入；数据库和MinIO凭据不会作为编译参数打包。未填写API地址时，Android模拟器自动使用`10.0.2.2`，其他平台使用`localhost`。显式填写的地址优先；切换平台时按访问环境调整。
+
+修改地址后停止原来的Flutter运行进程，再运行 `npm run android`；热重载不会改变 Dart 编译参数。真机需使用可访问的HTTPS后端地址。直接执行 `flutter run` 时，仍须手动传 `--dart-define=ANBAN_API_URL=...`。
+
+### 本地后端启动与停止
+
+`npm run backend`（或 `pnpm run backend`）默认使用8024端口。启动前通过`lsof`查找该端口的监听进程，先发送SIGTERM，未退出时再强制结束；此操作会结束占用该端口的其他程序。脚本收到Ctrl+C、SIGTERM或终端关闭信号时，清理本次启动的Go进程组，包括`go run`生成的子进程，释放端口。
+
+该脚本支持macOS/Linux/WSL，需要`lsof`。操作系统强制结束脚本（SIGKILL）无法执行退出处理，下次启动会清理残留监听进程。Docker后台运行仍用`docker:down`停止容器；若端口由Docker占用，应先停止对应容器，避免Docker自动重启再次占用。
+
+## Docker Compose 部署后端
+
+安装 Docker Engine / Docker Desktop 和 Compose v2。项目根目录的 `.env` 填写实际 PostgreSQL、MinIO 配置（已有 `.env` 不要覆盖）。数据库和 MinIO 使用现有服务，Compose 只启动安伴后端。
+
+```sh
+npm run docker:build   # 构建镜像
+npm run docker:up      # 后台运行
+npm run docker:down    # 停止并移除容器，不删除外部数据库或MinIO数据
+```
+
+服务器没有 Node.js 时直接执行对应的 `docker compose build`、`docker compose up -d`、`docker compose down` 即可。修改代码后重新 build、up；修改 `.env` 后重新 up。
+
+容器固定监听 `0.0.0.0:8024`，覆盖普通本地启动所用的 `ANBAN_ADDR`。宿主机默认发布到 `127.0.0.1:8024`，可供同机 HTTPS 反向代理使用；可用 `.env` 的 `ANBAN_BIND_IP`、`ANBAN_PORT` 修改宿主机绑定地址和端口。需要外部直接访问时设 `ANBAN_BIND_IP=0.0.0.0`；正式客户端仍需 HTTPS API 地址。数据库/MinIO 地址必须能从容器访问，容器里的 localhost 指容器自身。
+
+镜像采用 Go 多阶段构建，运行时只包含二进制、CA证书和时区数据，以非root用户运行。构建上下文限定在 `backend/` 并使用白名单，`.env`、Git历史、客户端和本地数据不会进入镜像；实际凭据只在运行时注入，不写进 Dockerfile。
+
+```sh
+docker compose config --quiet  # 只校验，不打印展开后的凭据
+docker compose ps
+docker compose logs --tail=100 backend
+```
+
+健康检查使用 `/healthz`，表示后端进程响应正常；启动时会验证 PostgreSQL 和 MinIO 连接。容器异常退出后自动重启。
+
+## 后端模块结构
+
+```text
+backend/
+├── main.go                   # 读取配置、组装服务、启动HTTP
+└── internal/
+    ├── config/config.go      # 环境变量与默认值
+    ├── storage/
+    │   ├── storage.go        # PostgreSQL连接池、MinIO连接、选项初始化
+    │   └── schema.sql        # 建表SQL，编译时内嵌
+    └── server/
+        ├── server.go         # 服务组装、CORS、会话鉴权、路由
+        ├── auth.go           # 注册登录、密码、令牌、限流
+        ├── vault.go          # 加密快照与版本冲突处理
+        ├── files.go          # 附件上传下载和归属校验
+        ├── options.go        # 健康选项读取
+        ├── envelope.go       # 加密载荷结构与校验
+        ├── http.go           # JSON请求解析、响应与错误
+        └── server_test.go    # 验证与真实服务集成测试
+```
+
+依赖方向：入口使用配置并创建服务；服务使用存储模块建立连接，再把请求分发到各功能处理器。数据库查询保留在对应功能文件中，事务边界与原来一致。`npm run backend`、`go run .`、环境变量和API地址均不变；部署二进制无需额外复制`schema.sql`。
+
 ## 账号与 Go 后端
 
 ```sh
 npm run backend
 ```
 
-登录界面不再提供服务地址输入框；所有用户连接构建时指定的 `ANBAN_API_URL`。开发默认 `http://localhost:8080`，正式发布必须设置为部署好的安伴 Go 后端 HTTPS 地址（不是数据库或 MinIO 地址）。账号为 3–32 位字母、数字或下划线（不区分大小写），密码至少 6 个字符、最多 72 个 UTF-8 字节。服务端使用 bcrypt 哈希，随机会话有效期 30 天，仅保存会话令牌的 SHA-256 摘要；退出会撤销当前会话。客户端会话仅在进程内存中保存，不进入备份。
+登录界面不再提供服务地址输入框；所有用户连接构建时指定的 `ANBAN_API_URL`。开发默认 `http://localhost:8024`，正式发布必须设置为部署好的安伴 Go 后端 HTTPS 地址（不是数据库或 MinIO 地址）。账号为 3–32 位字母、数字或下划线（不区分大小写），密码至少 6 个字符、最多 72 个 UTF-8 字节。服务端使用 bcrypt 哈希，随机会话有效期 30 天，仅保存会话令牌的 SHA-256 摘要；退出会撤销当前会话。客户端会话仅在进程内存中保存，不进入备份。
 
 每个账号拥有独立的远端快照和附件。所有记录、患者档案和设置保存在 PostgreSQL 加密快照中，附件保存在 MinIO。客户端仅使用当前进程内存，不再创建本地照护数据库，也不持久化新登录会话和资料加密密码。登录时读取并解密云端资料；每次记录、编辑、删除、设置修改、备份恢复都自动上传，服务器确认后才更新界面。断网、会话失效或版本冲突时保存失败，不会伪装成本地保存成功。
 
@@ -65,10 +131,10 @@ npm run backend
 
 | 环境变量 | 说明 |
 | --- | --- |
-| `ANBAN_ADDR` | 默认 `127.0.0.1:8080` |
+| `ANBAN_ADDR` | 默认 `127.0.0.1:8024` |
 | `ANBAN_ORIGINS` | 逗号分隔的浏览器 Origin 白名单 |
-| `DATABASE_URL` | PostgreSQL 连接串，本服务器 TCP 端口 **8021** |
-| `MINIO_ENDPOINT` | S3 API `server.example.com:8022`，不含协议或路径；8023 是控制台 |
+| `DATABASE_URL` | PostgreSQL 连接串，按实际环境配置 |
+| `MINIO_ENDPOINT` | S3 API 地址，例如 `s3.example.com:9000`，不含协议或路径，不使用控制台端口 |
 | `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | 仅在后端设置 |
 | `MINIO_USE_SSL` | 默认 `true`；当前 MinIO HTTP 服务设为 `false` |
 | `MINIO_BUCKET` | `anban`，需预先创建为私有桶 |
@@ -143,7 +209,7 @@ WHERE key = 'stoolStatus';
 
 ## 统一服务地址
 
-目前还没有收到有效的安伴Go后端公网API地址；数据库8021、MinIO8022/8023不能用于账号登录。部署时统一指定：
+目前还没有收到有效的安伴Go后端公网API地址；数据库与MinIO服务地址不能用于账号登录。部署时统一指定：
 
 ```sh
 cd mobile

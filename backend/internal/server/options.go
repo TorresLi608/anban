@@ -1,18 +1,11 @@
-package main
+package server
 
 import (
 	"encoding/json"
 	"net/http"
 )
 
-var healthDefaults = map[string][]string{
-	"stoolStatus":     {"正常", "未排便", "黑便", "血便", "便秘", "腹泻"},
-	"urineStatus":     {"正常", "尿痛", "血尿"},
-	"urineColor":      {"浅黄", "淡黄色，类似淡啤酒色"},
-	"urineAppearance": {"清澈", "泡沫很少，静置一会泡沫消失", "泡沫很多"},
-}
-
-func (c *cloud) healthOptions(w http.ResponseWriter, r *http.Request) {
+func (c *Server) healthOptions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
 		fail(w, 405, "method not allowed")
 		return

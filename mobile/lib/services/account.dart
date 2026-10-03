@@ -11,7 +11,7 @@ import 'sync.dart';
 class Account {
   static const apiBase = String.fromEnvironment(
     'ANBAN_API_URL',
-    defaultValue: 'http://localhost:8080',
+    defaultValue: 'http://localhost:8024',
   );
   static Map<String, dynamic>? current;
   static VaultSync? _api;

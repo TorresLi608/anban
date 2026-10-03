@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"bytes"
@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/minio/minio-go/v7"
+
+	"anban/backend/internal/config"
 )
 
 func sampleEnvelope() envelope {
@@ -27,7 +29,7 @@ func TestValidationAndThrottle(t *testing.T) {
 	if validEnvelope(&e) || validFileEnvelope(&e) {
 		t.Fatal("invalid nonce accepted")
 	}
-	c := &cloud{attempts: map[string][]time.Time{}}
+	c := &Server{attempts: map[string][]time.Time{}}
 	r := httptest.NewRequest("POST", "/", nil)
 	for i := 0; i < 10; i++ {
 		if !c.allow(r) {
@@ -54,11 +56,11 @@ func TestCloudIntegration(t *testing.T) {
 	if os.Getenv("ANBAN_INTEGRATION") != "1" {
 		t.Skip("set ANBAN_INTEGRATION=1 with server environment")
 	}
-	c, err := newCloud()
+	c, err := New(config.Load())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.db.Close()
+	defer c.Close()
 	var users []string
 	var keys []string
 	defer func() {

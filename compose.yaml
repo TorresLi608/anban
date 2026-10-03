@@ -1,0 +1,28 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    ports:
+      - "${ANBAN_BIND_IP:-127.0.0.1}:${ANBAN_PORT:-8024}:8024"
+    environment:
+      ANBAN_ADDR: "0.0.0.0:8024"
+      ANBAN_ORIGINS: "${ANBAN_ORIGINS:-}"
+      DATABASE_URL: "${DATABASE_URL:?Set DATABASE_URL in .env}"
+      MINIO_ENDPOINT: "${MINIO_ENDPOINT:?Set MINIO_ENDPOINT in .env}"
+      MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:?Set MINIO_ACCESS_KEY in .env}"
+      MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:?Set MINIO_SECRET_KEY in .env}"
+      MINIO_USE_SSL: "${MINIO_USE_SSL:-true}"
+      MINIO_BUCKET: "${MINIO_BUCKET:-anban}"
+      TZ: "${TZ:-Asia/Shanghai}"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8024/healthz"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
