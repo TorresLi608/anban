@@ -24,6 +24,9 @@ const recordKinds = [
   'mood',
   'memory',
   'document',
+  'folder',
+  'visit',
+  'instruction',
 ];
 const symptomNames = [
   '黄疸',
@@ -79,7 +82,9 @@ class CareRecord {
     final fields = Map<String, String>.from(m['fields'] as Map);
     if (fields.length > 30 ||
         fields.entries.any(
-          (e) => e.key.length > 60 || e.value.length > 10000,
+          (e) =>
+              e.key.length > 60 ||
+              (e.key != 'archiveIds' && e.value.length > 10000),
         )) {
       throw const FormatException('记录字段过长');
     }
@@ -95,6 +100,32 @@ class CareRecord {
   void validate() {
     if (id.isEmpty || !recordKinds.contains(kind)) {
       throw const FormatException('记录无效');
+    }
+    if (kind == 'folder' &&
+        (text('title').trim().isEmpty ||
+            ['.', '..'].contains(text('title').trim()) ||
+            text('title').length > 120 ||
+            text('title').contains(RegExp(r'[/\\\x00-\x1f]')))) {
+      throw const FormatException('文件夹名称需为 1–120 字，不能包含斜杠或控制字符');
+    }
+    if (kind == 'visit') {
+      if (!['门诊', '住院'].contains(text('visitType')) ||
+          text('title').trim().isEmpty) {
+        throw const FormatException('请填写看诊名称和类型');
+      }
+      final end = text('dischargeAt').isEmpty
+          ? null
+          : DateTime.tryParse(text('dischargeAt'));
+      if (text('dischargeAt').isNotEmpty && (end == null || end.isBefore(at))) {
+        throw const FormatException('出院时间不能早于入院时间');
+      }
+      if (selectedValues(text('archiveIds')).toSet().length !=
+          selectedValues(text('archiveIds')).length) {
+        throw const FormatException('档案关联重复');
+      }
+    }
+    if (kind == 'instruction' && text('content').trim().isEmpty) {
+      throw const FormatException('请填写医嘱内容');
     }
     if (kind == 'pain' &&
         (int.tryParse(text('score')) == null ||
@@ -257,16 +288,15 @@ class CareData {
     settings: settings ?? this.settings,
   );
   Map<String, dynamic> toJson() => {
-    'version': 1,
+    'version': 2,
     'records': records.map((r) => r.toJson()).toList(),
     'profile': profile,
     'settings': settings,
   };
   factory CareData.fromJson(dynamic value) {
     if (value is! Map ||
-        value['version'] != 1 ||
-        value['records'] is! List ||
-        (value['records'] as List).length > 50000) {
+        ![1, 2].contains(value['version']) ||
+        value['records'] is! List) {
       throw const FormatException('备份格式或版本不支持');
     }
     final records = (value['records'] as List)
@@ -282,6 +312,7 @@ class CareData {
     if (doseKeys.toSet().length != doseKeys.length) {
       throw const FormatException('备份包含重复服药打卡');
     }
+    validateMedicalRelationships(records);
     return CareData(
       records: records,
       profile: Map<String, String>.from(value['profile'] as Map),
@@ -309,3 +340,33 @@ Iterable<String> attachmentIds(CareRecord record) => {
   if (record.text('attachment').isNotEmpty) record.text('attachment'),
   ...photosOf(record).map((p) => p['id']!),
 };
+
+void validateMedicalRelationships(List<CareRecord> records) {
+  final byId = {for (final r in records) r.id: r};
+  for (final record in records) {
+    if (['folder', 'document'].contains(record.kind)) {
+      var parent = record.text('folderId');
+      final visited = {record.id};
+      while (parent.isNotEmpty) {
+        if (!visited.add(parent)) {
+          throw const FormatException('文件夹不能移入自己或自己的子文件夹');
+        }
+        final folder = byId[parent];
+        if (folder?.kind != 'folder') throw const FormatException('所属文件夹不存在');
+        parent = folder!.text('folderId');
+      }
+    }
+    if (record.kind == 'visit') {
+      for (final id in selectedValues(record.text('archiveIds'))) {
+        if (!['folder', 'document'].contains(byId[id]?.kind)) {
+          throw const FormatException('关联档案不存在，请重新选择');
+        }
+      }
+    }
+    if (record.kind == 'instruction' &&
+        record.text('visitId').isNotEmpty &&
+        byId[record.text('visitId')]?.kind != 'visit') {
+      throw const FormatException('关联看诊不存在');
+    }
+  }
+}

@@ -7,11 +7,13 @@ import 'data/store.dart';
 import 'data/vault.dart';
 import 'services/media_source.dart';
 import 'services/account.dart';
+import 'services/app_update.dart';
 import 'services/reminders.dart';
 import 'screens/home.dart';
 import 'screens/records.dart';
 import 'screens/care.dart';
 import 'screens/profile.dart';
+import 'screens/medical.dart';
 import 'ui.dart';
 
 Future<void> main() async {
@@ -23,7 +25,8 @@ Future<void> main() async {
     store.publish = (_, _) async => throw StateError('请先登录');
     final reminders = ReminderService();
     await reminders.initialize();
-    await reminders.refresh(store.data, force: true);
+    // Existing system reminders survive opening the login screen. Reschedule
+    // after login; explicit logout/settings changes still cancel old schedules.
     runApp(AnbanApp(store: store, reminders: reminders, requireLogin: true));
   } catch (e) {
     runApp(
@@ -165,22 +168,24 @@ class AnbanApp extends StatelessWidget {
         ),
         child: child!,
       ),
-      home: requireLogin && Account.current == null
-          ? Scaffold(
-              body: SafeArea(
-                child: Center(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(24),
-                    child: ProfilePage(
-                      store: store,
-                      reminders: reminders,
-                      loginOnly: true,
+      home: AppUpdatePrompt(
+        child: requireLogin && Account.current == null
+            ? Scaffold(
+                body: SafeArea(
+                  child: Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(24),
+                      child: ProfilePage(
+                        store: store,
+                        reminders: reminders,
+                        loginOnly: true,
+                      ),
                     ),
                   ),
                 ),
-              ),
-            )
-          : CareShell(store: store, reminders: reminders),
+              )
+            : CareShell(store: store, reminders: reminders),
+      ),
     ),
   );
 }
@@ -196,11 +201,12 @@ class CareShell extends StatefulWidget {
 class _CareShellState extends State<CareShell> with WidgetsBindingObserver {
   int selected = 0;
   Timer? timer;
-  static const names = ['首页', '健康记录', '行程', '我的'];
+  static const names = ['首页', '健康记录', '行程', '医疗资料', '我的'];
   static const icons = [
     Icons.space_dashboard_outlined,
     Icons.edit_note_rounded,
     Icons.menu_book_outlined,
+    Icons.folder_outlined,
     Icons.person_outline_rounded,
   ];
   @override
@@ -248,6 +254,7 @@ class _CareShellState extends State<CareShell> with WidgetsBindingObserver {
       ),
       1 => RecordsPage(store: widget.store),
       2 => CarePage(store: widget.store),
+      3 => MedicalPage(store: widget.store),
       _ => ProfilePage(store: widget.store, reminders: widget.reminders),
     };
     final scaffold = Scaffold(

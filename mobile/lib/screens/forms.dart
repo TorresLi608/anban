@@ -7,6 +7,8 @@ import '../data/models.dart';
 import '../data/store.dart';
 import '../data/planning.dart';
 import '../ui.dart';
+import '../data/medical.dart';
+import 'archive_picker.dart';
 
 class FieldSpec {
   final String key, label;
@@ -24,6 +26,37 @@ class FieldSpec {
 }
 
 const specifications = <String, List<FieldSpec>>{
+  'folder': [FieldSpec('title', '文件夹名称 *', required: true)],
+  'document': [
+    FieldSpec('title', '档案名称 *', required: true),
+    FieldSpec('category', '资料分类'),
+    FieldSpec('note', '备注', type: 'multiline'),
+  ],
+  'visit': [
+    FieldSpec(
+      'visitType',
+      '看诊类型 *',
+      choices: ['门诊', '住院'],
+      initial: '门诊',
+      required: true,
+    ),
+    FieldSpec('title', '看诊名称 *', initial: '看诊记录', required: true),
+    FieldSpec('hospital', '医院'),
+    FieldSpec('department', '科室'),
+    FieldSpec('doctor', '医生'),
+    FieldSpec('reason', '就诊原因 / 入院原因', type: 'multiline'),
+    FieldSpec('findings', '诊疗结果 / 住院经过', type: 'multiline'),
+    FieldSpec('plan', '后续安排', type: 'multiline'),
+    FieldSpec('dischargeAt', '出院时间（住院可选）', type: 'datetime'),
+    FieldSpec('archiveIds', '关联档案', type: 'archives'),
+    FieldSpec('note', '补充备注', type: 'multiline'),
+  ],
+  'instruction': [
+    FieldSpec('content', '医嘱内容 *', type: 'multiline', required: true),
+    FieldSpec('title', '标题', initial: '临时医嘱'),
+    FieldSpec('doctor', '医生 / 来源'),
+    FieldSpec('visitId', '关联看诊', type: 'visit'),
+  ],
   'pain': [
     FieldSpec(
       'location',
@@ -102,6 +135,10 @@ const specifications = <String, List<FieldSpec>>{
   ],
 };
 const kindNames = {
+  'folder': '文件夹',
+  'document': '档案',
+  'visit': '看诊记录',
+  'instruction': '医嘱',
   'weight': '体重',
   'stool': '大便',
   'urine': '小便',
@@ -288,17 +325,18 @@ class _RecordFormState extends State<RecordForm> {
                           '仅记录医生已开具的用药方案。漏服或出现不适时，请联系医护，不要自行补服、加量或停药。',
                         ),
                       ),
-                    OutlinedButton.icon(
-                      onPressed: saving ? null : pickAt,
-                      icon: const Icon(Icons.schedule, size: 18),
-                      label: Text(
-                        '${widget.kind == 'appointment'
-                            ? '就医时间'
-                            : widget.kind == 'handover'
-                            ? '班次日期'
-                            : '记录时间'}  ${dayKey(at)} ${clockText(at)}',
+                    if (widget.kind != 'folder')
+                      OutlinedButton.icon(
+                        onPressed: saving ? null : pickAt,
+                        icon: const Icon(Icons.schedule, size: 18),
+                        label: Text(
+                          '${widget.kind == 'visit'
+                              ? '看诊 / 入院时间'
+                              : widget.kind == 'handover'
+                              ? '班次日期'
+                              : '记录时间'}  ${dayKey(at)} ${clockText(at)}',
+                        ),
                       ),
-                    ),
                     const SizedBox(height: 20),
                     if (widget.kind == 'pain') ...[
                       Row(
@@ -480,6 +518,51 @@ class _RecordFormState extends State<RecordForm> {
 
   Widget field(FieldSpec spec) {
     final c = controllers[spec.key]!;
+    if (spec.type == 'archives') {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('已关联 ${selectedValues(c.text).length} 项档案或文件夹'),
+          OutlinedButton.icon(
+            onPressed: saving
+                ? null
+                : () async {
+                    final ids = await selectArchives(
+                      context,
+                      widget.store,
+                      selected: selectedValues(c.text).toSet(),
+                    );
+                    if (ids != null && mounted) {
+                      setState(() => c.text = jsonEncode(ids.toList()));
+                    }
+                  },
+            icon: const Icon(Icons.link),
+            label: const Text('选择关联档案'),
+          ),
+        ],
+      );
+    }
+    if (spec.type == 'visit') {
+      return DropdownButtonFormField<String>(
+        initialValue: c.text,
+        isExpanded: true,
+        decoration: InputDecoration(labelText: spec.label),
+        items: [
+          const DropdownMenuItem(value: '', child: Text('不关联看诊')),
+          for (final visit in widget.store.records('visit'))
+            DropdownMenuItem(
+              value: visit.id,
+              child: Text(
+                '${dayKey(visit.at)} ${medicalTitle(visit)}',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+        ],
+        onChanged: saving
+            ? null
+            : (value) => setState(() => c.text = value ?? ''),
+      );
+    }
     final optionKey = widget.kind == 'stool'
         ? 'stoolStatus'
         : switch (spec.key) {
@@ -549,12 +632,27 @@ class _RecordFormState extends State<RecordForm> {
       controller: c,
       enabled: !saving,
       readOnly: spec.type == 'datetime',
-      maxLength: spec.type == 'multiline' ? 2000 : 150,
+      maxLength: spec.type == 'multiline'
+          ? 10000
+          : widget.kind == 'folder'
+          ? 120
+          : 150,
       maxLines: spec.type == 'multiline' ? 3 : 1,
       keyboardType: spec.type == 'number'
           ? const TextInputType.numberWithOptions(decimal: true)
           : TextInputType.text,
-      decoration: InputDecoration(labelText: spec.label, counterText: ''),
+      decoration: InputDecoration(
+        labelText: spec.label,
+        counterText: '',
+        suffixIcon:
+            spec.type == 'datetime' && !spec.required && c.text.isNotEmpty
+            ? IconButton(
+                onPressed: saving ? null : () => setState(c.clear),
+                icon: const Icon(Icons.clear),
+                tooltip: '清除时间',
+              )
+            : null,
+      ),
       onTap: spec.type != 'datetime'
           ? null
           : () async {

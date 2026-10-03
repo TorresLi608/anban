@@ -8,6 +8,35 @@ import 'package:anban/data/store.dart';
 import 'package:anban/data/vault.dart';
 
 void main() {
+  test(
+    'daily meals survive frequent water and coincident alerts are combined',
+    () {
+      final data = CareData(
+        settings: {
+          'notifyMeal': 'true',
+          'mealStart': '18:00',
+          'mealEnd': '19:00',
+          'mealCount': '1',
+          'notifyWater': 'true',
+          'waterStart': '00:00',
+          'waterEnd': '23:55',
+          'waterInterval': '5',
+        },
+      );
+      final now = DateTime(2026, 10, 3, 0, 1);
+      final android = scheduleReminders(data, now, android: true);
+      expect(android.length, lessThanOrEqualTo(300));
+      expect(android.every((r) => r.daily), isTrue);
+      final meal = android.singleWhere((r) => r.categories.contains('meal'));
+      expect(meal.at, DateTime(2026, 10, 3, 18));
+      expect(meal.categories, contains('water'));
+      expect(meal.title, contains('用餐'));
+      final ios = scheduleReminders(data, now, android: false);
+      expect(ios.length, 60);
+      expect(ios.any((r) => r.categories.contains('meal')), isTrue);
+      expect(ios.every((r) => !r.daily), isTrue);
+    },
+  );
   test('meal and water schedules respect count, duration and daily bounds', () {
     final meals = mealTimes({});
     expect(meals, hasLength(5));

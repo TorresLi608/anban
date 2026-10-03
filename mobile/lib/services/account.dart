@@ -70,10 +70,8 @@ class Account {
           throw const FormatException('健康选项配置不完整');
         }
         final remote = await api.pull(encryptionPassword, allowEmpty: true);
-        final data = await vault.restore({
-          'data': remote.data.toJson(),
-          'files': remote.files,
-        });
+        await api.loadInto(vault, remote, encryptionPassword);
+        final data = remote.data;
         // Remove the persisted session from older versions; new sessions live only in memory.
         await const FlutterSecureStorage().delete(key: 'anban-account');
         current = {
@@ -98,11 +96,8 @@ class Account {
     final remote = await _api!.pull(_password!, allowEmpty: true);
     final vault = await LocalVault.memory();
     try {
-      final data = await vault.restore({
-        'data': remote.data.toJson(),
-        'files': remote.files,
-      });
-      await store.replaceVault(vault, data);
+      await _api!.loadInto(vault, remote, _password!);
+      await store.replaceVault(vault, remote.data);
     } catch (_) {
       await vault.close();
       rethrow;

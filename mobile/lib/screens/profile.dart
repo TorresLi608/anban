@@ -10,6 +10,7 @@ import '../data/vault.dart';
 import '../services/reminders.dart';
 
 import '../services/account.dart';
+import '../services/app_update.dart';
 import '../ui.dart';
 import 'settings.dart';
 
@@ -400,6 +401,13 @@ class _ProfilePageState extends State<ProfilePage> {
                 onPressed: () => run(connect),
                 child: const Text('登录 / 注册'),
               ),
+            if (AppUpdate.supported)
+              TextButton(
+                onPressed: busy
+                    ? null
+                    : () => run(() => AppUpdate.check(context)),
+                child: const Text('检查更新'),
+              ),
           ],
         ),
       );
@@ -532,6 +540,13 @@ class _ProfilePageState extends State<ProfilePage> {
                 '用餐、喝水、PICC、输液港、化疗通知',
                 () => openSettings(context, widget.store, widget.reminders),
               ),
+              if (AppUpdate.supported)
+                option(
+                  Icons.system_update_outlined,
+                  '检查更新',
+                  '查看新版本并前往下载',
+                  () => run(() => AppUpdate.check(context)),
+                ),
             ],
           ),
         ),

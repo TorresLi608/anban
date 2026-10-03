@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -16,12 +17,14 @@ import (
 
 // Server routes authenticated requests to the feature handlers.
 type Server struct {
-	db       *sql.DB
-	objects  *minio.Client
-	bucket   string
-	origins  map[string]bool
-	mu       sync.Mutex
-	attempts map[string][]time.Time
+	db        *sql.DB
+	objects   *minio.Client
+	bucket    string
+	origins   map[string]bool
+	mu        sync.Mutex
+	attempts  map[string][]time.Time
+	admins    map[string]bool
+	publicURL string
 }
 
 // New connects the configured services before accepting requests.
@@ -35,7 +38,20 @@ func New(cfg config.Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{db: db, objects: objects, bucket: cfg.MinIOBucket, origins: map[string]bool{}, attempts: map[string][]time.Time{}}
+	s := &Server{db: db, objects: objects, bucket: cfg.MinIOBucket, origins: map[string]bool{}, attempts: map[string][]time.Time{}, admins: map[string]bool{}}
+	s.publicURL = cfg.PublicURL
+	for _, username := range cfg.AdminUsers {
+		name := strings.ToLower(strings.TrimSpace(username))
+		if name == "" {
+			continue
+		}
+		var exists bool
+		if err := db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM anban_users WHERE username=$1)`, name).Scan(&exists); err != nil || !exists {
+			db.Close()
+			return nil, fmt.Errorf("管理员账号 %q 不存在或读取失败，请先注册该账号再配置 ANBAN_ADMIN_USERS", name)
+		}
+		s.admins[name] = true
+	}
 	for _, origin := range cfg.Origins {
 		s.origins[strings.TrimSpace(origin)] = true
 	}
@@ -66,7 +82,15 @@ func (c *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]string{"status": "ok"})
 		return
 	}
-	if r.URL.Path == "/api/v1/auth/register" || r.URL.Path == "/api/v1/auth/login" {
+	if r.URL.Path == "/api/v1/app/android-update" {
+		c.publicAndroidUpdate(w, r)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/v1/app/android-apk/") {
+		c.downloadAPK(w, r)
+		return
+	}
+	if r.URL.Path == "/api/v1/auth/register" || r.URL.Path == "/api/v1/auth/login" || r.URL.Path == "/api/v1/admin/login" {
 		c.auth(w, r)
 		return
 	}
@@ -86,6 +110,12 @@ func (c *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case strings.HasPrefix(r.URL.Path, "/api/v1/admin/"):
+		if !c.admins[username] {
+			fail(w, 403, "此账号没有管理权限")
+			return
+		}
+		c.admin(w, r, username)
 	case r.URL.Path == "/api/v1/config/health-options":
 		c.healthOptions(w, r)
 	case r.URL.Path == "/api/v1/auth/me" && r.Method == "GET":

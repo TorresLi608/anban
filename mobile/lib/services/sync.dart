@@ -1,16 +1,18 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
 import '../data/models.dart';
+import '../data/attachments.dart';
 import '../data/vault.dart';
 
 class VaultSync {
   final Uri url;
   final String token;
   int revision = 0;
-  LocalVault? _source;
-  Map<String, String> references = {};
+  LocalVault? _stagedSource;
+  final _staged = <String, RemoteAttachment>{};
   VaultSync(String base, this.token) : url = _url(base);
   static Uri _url(String base) {
     final uri = Uri.parse(base.trim());
@@ -48,33 +50,121 @@ class VaultSync {
     );
   }
 
-  Future<void> save(CareData data, LocalVault vault, String password) async {
-    final files = <String, String>{};
-    int total = 0;
-    for (final id in data.records.expand(attachmentIds).toSet()) {
-      if (id.isEmpty || files.containsKey(id)) continue;
-      final bytes = await vault.attachment(id);
-      total += bytes.length;
-      if (total > 100 * 1024 * 1024) throw StateError('附件合计超过 100 MB，请分批整理后同步');
-      if (identical(_source, vault) && references.containsKey(id)) {
-        files[id] = references[id]!;
-        continue;
-      }
-      final encryptedFile = await sealBackup({
-        'file': base64Encode(bytes),
-      }, password);
+  Future<RemoteAttachment> _upload(
+    Stream<List<int>> source,
+    String id,
+    String password,
+  ) async {
+    final salt = randomBytes(16);
+    final key = await passwordKey(password, salt);
+    final parts = <String>[];
+    var size = 0;
+    await for (final bytes in attachmentChunks(source)) {
+      size += bytes.length;
+      if (size > maxAttachmentBytes) throw StateError('单个文件最多 200 MB');
+      final encrypted = {
+        'version': 1,
+        'algorithm': 'AES-256-GCM',
+        'iterations': 210000,
+        'salt': base64Encode(salt),
+        ...await encryptBytes(
+          bytes,
+          key,
+          aad: utf8.encode('$id:${parts.length}'),
+        ),
+      };
       final response = check(
         await http
             .post(
               url.replace(path: '/api/v1/files'),
               headers: headers,
-              body: jsonEncode(encryptedFile),
+              body: jsonEncode(encrypted),
             )
             .timeout(const Duration(seconds: 120)),
       );
-      files[id] = response['id'] as String;
+      final remote = response['id'];
+      if (remote is! String || !RegExp(r'^[a-f0-9]{64}$').hasMatch(remote)) {
+        throw const FormatException('服务器返回了无效附件标识');
+      }
+      parts.add(remote);
     }
-    final encrypted = await sealBackup({
+    if (size == 0) throw const FormatException('不能保存空附件');
+    return RemoteAttachment(parts, size: size, salt: base64Encode(salt));
+  }
+
+  Stream<List<int>> readAttachment(
+    String id,
+    RemoteAttachment file,
+    String password,
+  ) async* {
+    final key = file.legacy
+        ? null
+        : await passwordKey(password, base64Decode(file.salt!));
+    var total = 0;
+    for (var i = 0; i < file.parts.length; i++) {
+      final response = check(
+        await http
+            .get(
+              url.replace(path: '/api/v1/files/${file.parts[i]}'),
+              headers: headers,
+            )
+            .timeout(const Duration(seconds: 120)),
+      );
+      final Uint8List bytes;
+      if (file.legacy) {
+        final value = await openBackup(response, password);
+        bytes = base64Decode(value['file'] as String);
+      } else {
+        if (response['salt'] != file.salt ||
+            response['version'] != 1 ||
+            response['algorithm'] != 'AES-256-GCM' ||
+            response['iterations'] != 210000) {
+          throw const FormatException('附件加密信息无效');
+        }
+        bytes = await decryptBytes(response, key!, aad: utf8.encode('$id:$i'));
+        final expected = i == file.parts.length - 1
+            ? file.size! - i * attachmentChunkBytes
+            : attachmentChunkBytes;
+        if (bytes.length != expected) throw const FormatException('附件分块长度不完整');
+      }
+      total += bytes.length;
+      if (total > maxAttachmentBytes) {
+        throw const FormatException('附件超过 200 MB');
+      }
+      yield bytes;
+    }
+  }
+
+  Future<Uint8List> _readBytes(
+    String id,
+    RemoteAttachment file,
+    String password,
+  ) async {
+    final result = BytesBuilder(copy: false);
+    await for (final bytes in readAttachment(id, file, password)) {
+      result.add(bytes);
+    }
+    return result.takeBytes();
+  }
+
+  Future<void> save(CareData data, LocalVault vault, String password) async {
+    if (!identical(_stagedSource, vault)) {
+      _staged.clear();
+      _stagedSource = vault;
+    }
+    final files = <String, RemoteAttachment>{};
+    for (final id in data.records.expand(attachmentIds).toSet()) {
+      if (id.isEmpty) continue;
+      final existing = identical(vault.remoteOwner, this)
+          ? vault.remoteAttachments[id]
+          : null;
+      files[id] =
+          existing ??
+          _staged[id] ??
+          await _upload(vault.attachmentStream(id), id, password);
+      _staged[id] = files[id]!;
+    }
+    final manifest = {
       'data': {
         ...data.toJson(),
         'settings': {
@@ -84,30 +174,39 @@ class VaultSync {
               e.key: e.value,
         },
       },
-      'files': files,
-    }, password);
-    final body = jsonEncode(encrypted);
-    if (utf8.encode(body).length > 12 * 1024 * 1024) {
-      throw StateError('快照过大，请使用本地备份');
+      'files': files.map((id, file) => MapEntry(id, file.toJson())),
+    };
+    final bytes = utf8.encode(jsonEncode(manifest));
+    Map<String, dynamic> payload = manifest;
+    if (bytes.length > attachmentChunkBytes) {
+      // Large catalogs are chunked too; no fixed record/file count limit.
+      final id = 'manifest-${newId()}';
+      final reference = await _upload(Stream.value(bytes), id, password);
+      payload = {'manifestId': id, 'manifest': reference.toJson()};
     }
+    final encrypted = await sealBackup(payload, password);
     final response = check(
       await http
           .put(
             url,
             headers: {...headers, 'If-Match': '"$revision"'},
-            body: body,
+            body: jsonEncode(encrypted),
           )
-          .timeout(const Duration(seconds: 30)),
+          .timeout(const Duration(seconds: 60)),
     );
     revision = response['revision'] as int;
-    references = files;
-    _source = vault;
+    vault.remoteOwner = this;
+    vault.readRemote = (id, file) => readAttachment(id, file, password);
+    vault.remoteAttachments.addAll(files);
+    // Free staged bytes only after the server has committed their references.
+    for (final id in files.keys) {
+      await vault.releaseLocalAttachment(id);
+    }
+    _staged.clear();
   }
 
-  Future<({CareData data, int revision, Map<String, String> files})> pull(
-    String password, {
-    bool allowEmpty = false,
-  }) async {
+  Future<({CareData data, int revision, Map<String, RemoteAttachment> files})>
+  pull(String password, {bool allowEmpty = false}) async {
     final response = check(
       await http
           .get(url, headers: headers)
@@ -115,40 +214,49 @@ class VaultSync {
     );
     if (response['data'] == null) {
       if (!allowEmpty) throw StateError('服务器还没有备份');
-      revision = response['revision'] as int;
-      this.references = {};
-      return (data: CareData(), revision: revision, files: <String, String>{});
+      return (
+        data: CareData(),
+        revision: response['revision'] as int,
+        files: <String, RemoteAttachment>{},
+      );
     }
-    final decrypted = await openBackup(
+    var decrypted = await openBackup(
       Map<String, dynamic>.from(response['data']),
       password,
     );
-    final data = CareData.fromJson(decrypted['data']);
-    final references = Map<String, String>.from(decrypted['files'] ?? {});
-    final files = <String, String>{};
-    int total = 0;
-    for (final id in data.records.expand(attachmentIds).toSet()) {
-      if (id.isEmpty || files.containsKey(id)) continue;
-      final remote = references[id];
-      if (remote == null || !RegExp(r'^[a-f0-9]{64}$').hasMatch(remote)) {
-        throw const FormatException('远端快照缺少附件');
+    if (decrypted['manifest'] != null) {
+      final id = decrypted['manifestId'];
+      if (id is! String || id.length > 100) {
+        throw const FormatException('资料目录无效');
       }
-      final response = check(
-        await http
-            .get(url.replace(path: '/api/v1/files/$remote'), headers: headers)
-            .timeout(const Duration(seconds: 120)),
+      final bytes = await _readBytes(
+        id,
+        RemoteAttachment.fromJson(decrypted['manifest']),
+        password,
       );
-      final file = await openBackup(response, password);
-      final content = file['file'] as String;
-      final size = base64Decode(content).length;
-      total += size;
-      if (size > 20 * 1024 * 1024 || total > 100 * 1024 * 1024) {
-        throw const FormatException('附件超出恢复上限（单个 20 MB，合计 100 MB）');
-      }
-      files[id] = content;
+      decrypted = Map<String, dynamic>.from(
+        jsonDecode(utf8.decode(bytes)) as Map,
+      );
     }
-    revision = response['revision'] as int;
-    this.references = references;
-    return (data: data, revision: revision, files: files);
+    final data = CareData.fromJson(decrypted['data']);
+    final references = Map<String, dynamic>.from(decrypted['files'] ?? {});
+    final files = <String, RemoteAttachment>{};
+    for (final id in data.records.expand(attachmentIds).toSet()) {
+      files[id] = RemoteAttachment.fromJson(references[id]);
+    }
+    return (data: data, revision: response['revision'] as int, files: files);
+  }
+
+  Future<void> loadInto(
+    LocalVault vault,
+    ({CareData data, int revision, Map<String, RemoteAttachment> files})
+    snapshot,
+    String password,
+  ) async {
+    await vault.save(snapshot.data);
+    vault.remoteOwner = this;
+    vault.remoteAttachments.addAll(snapshot.files);
+    vault.readRemote = (id, file) => readAttachment(id, file, password);
+    revision = snapshot.revision;
   }
 }

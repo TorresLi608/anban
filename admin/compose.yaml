@@ -1,0 +1,26 @@
+name: anban-admin
+
+services:
+  admin:
+    build:
+      context: .
+    init: true
+    restart: unless-stopped
+    ports:
+      - "${ANBAN_ADMIN_BIND_IP:-127.0.0.1}:${ANBAN_ADMIN_PORT:-7358}:3000"
+    environment:
+      ANBAN_ADMIN_API_URL: "${ANBAN_ADMIN_API_URL:?Set the Go backend URL reachable from this container}"
+      NODE_ENV: production
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
+      NEXT_TELEMETRY_DISABLED: "1"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3

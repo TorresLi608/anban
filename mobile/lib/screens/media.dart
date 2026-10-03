@@ -8,6 +8,7 @@ import 'package:printing/printing.dart';
 import 'package:video_player/video_player.dart';
 
 import '../data/models.dart';
+import '../data/medical.dart';
 import '../data/store.dart';
 import '../services/media_source.dart';
 import '../ui.dart';
@@ -128,7 +129,7 @@ class _MediaPreviewState extends State<MediaPreview> {
   @override
   void initState() {
     super.initState();
-    if (['mp4', 'mov'].contains(ext)) {
+    if (['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi'].contains(ext)) {
       prepareVideo();
     }
     audio.onPlayerComplete.listen((_) {
@@ -187,7 +188,7 @@ class _MediaPreviewState extends State<MediaPreview> {
                 return;
               }
               await FilePicker.saveFile(
-                fileName: widget.record.text('filename'),
+                fileName: safeFileName(widget.record.text('filename')),
                 bytes: widget.bytes,
               );
             }),
@@ -213,7 +214,16 @@ class _MediaPreviewState extends State<MediaPreview> {
     if (error != null) {
       return Note(error!, urgent: true);
     }
-    if (['jpg', 'jpeg', 'png', 'webp'].contains(ext)) {
+    if ([
+      'jpg',
+      'jpeg',
+      'png',
+      'webp',
+      'gif',
+      'bmp',
+      'heic',
+      'heif',
+    ].contains(ext)) {
       return InteractiveViewer(
         child: Image.memory(
           widget.bytes,
@@ -231,7 +241,7 @@ class _MediaPreviewState extends State<MediaPreview> {
         canDebug: false,
       );
     }
-    if (['mp4', 'mov'].contains(ext)) {
+    if (['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi'].contains(ext)) {
       if (video?.value.isInitialized != true) {
         return const CircularProgressIndicator();
       }
@@ -257,6 +267,19 @@ class _MediaPreviewState extends State<MediaPreview> {
               }
               setState(() => playing = !playing);
             },
+          ),
+        ],
+      );
+    }
+    if (!['mp3', 'm4a', 'wav', 'aac', 'ogg'].contains(ext)) {
+      return const Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.insert_drive_file_outlined, size: 64),
+          SizedBox(height: 16),
+          Text(
+            '此格式暂不支持内置预览。文件已保存，可用右上角导出后通过对应软件查看。',
+            textAlign: TextAlign.center,
           ),
         ],
       );

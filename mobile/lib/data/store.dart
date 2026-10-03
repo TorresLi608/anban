@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
 import 'models.dart';
@@ -35,6 +37,7 @@ class CareStore extends ChangeNotifier {
   Future<void> change(CareData Function(CareData) update) {
     final result = _pending.then((_) async {
       final next = update(data);
+      validateMedicalRelationships(next.records);
       await publish?.call(next, vault);
       await vault.save(next);
       data = next;
@@ -63,10 +66,34 @@ class CareStore extends ChangeNotifier {
     if (['journey', 'journeyEntry'].contains(record.kind)) {
       throw StateError('行程记录不支持删除');
     }
-    return change(
-      (d) =>
-          d.copy(records: d.records.where((r) => r.id != record.id).toList()),
-    );
+    return change((d) {
+      if (record.kind == 'folder' &&
+          d.records.any((r) => r.text('folderId') == record.id)) {
+        throw StateError('文件夹不是空的，请先移动或删除其中的内容');
+      }
+      return d.copy(
+        records: [
+          for (final r in d.records)
+            if (r.id != record.id)
+              if (r.kind == 'visit')
+                r.copy(
+                  fields: {
+                    ...r.fields,
+                    'archiveIds': jsonEncode(
+                      selectedValues(r.text('archiveIds'))
+                          .where((id) => id != record.id)
+                          .toList(),
+                    ),
+                  },
+                )
+              else if (r.kind == 'instruction' &&
+                  r.text('visitId') == record.id)
+                r.copy(fields: {...r.fields, 'visitId': ''})
+              else
+                r,
+        ],
+      );
+    });
   }
 
   Future<void> profile(Map<String, String> values) =>

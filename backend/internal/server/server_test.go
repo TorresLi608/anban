@@ -159,3 +159,32 @@ func TestPasswordLength(t *testing.T) {
 		}
 	}
 }
+
+func TestAdminRequiresAuthentication(t *testing.T) {
+	s := &Server{}
+	for _, path := range []string{"/api/v1/admin/me", "/api/v1/admin/android-release", "/api/v1/admin/health-options", "/api/v1/admin/password"} {
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+		if w.Code != 401 {
+			t.Fatalf("unauthenticated admin route %s: %d", path, w.Code)
+		}
+	}
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, httptest.NewRequest("POST", "/api/v1/app/android-update", nil))
+	if w.Code != 405 {
+		t.Fatal("public update endpoint accepted a write")
+	}
+}
+
+func TestHealthOptionsValidation(t *testing.T) {
+	valid := map[string][]string{"stoolStatus": {"正常"}, "urineStatus": {"正常"}, "urineColor": {"浅黄"}, "urineAppearance": {"清澈"}}
+	if !validHealthOptions(valid) {
+		t.Fatal("valid health options rejected")
+	}
+	for _, values := range [][]string{nil, {}, {""}, {" 正常"}, {"正常", "正常"}, {strings.Repeat("字", 101)}, {"一\n二"}} {
+		valid["stoolStatus"] = values
+		if validHealthOptions(valid) {
+			t.Fatal("invalid health options accepted")
+		}
+	}
+}

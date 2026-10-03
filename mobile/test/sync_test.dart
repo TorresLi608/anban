@@ -69,12 +69,8 @@ void main() {
         failWrite = false;
         await store.restore(replacement);
         final pulled = await api.pull(password);
-        expect(base64Decode(pulled.files[id]!), [9, 8, 7]);
         final target = await LocalVault.memory();
-        await target.restore({
-          'data': pulled.data.toJson(),
-          'files': pulled.files,
-        });
+        await api.loadInto(target, pulled, password);
         expect((await target.load()).profile['name'], '患者');
         expect(await target.attachment(id), [9, 8, 7]);
         await expectLater(

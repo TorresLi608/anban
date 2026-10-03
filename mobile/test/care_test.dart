@@ -95,7 +95,7 @@ void main() {
         'data': CareData().toJson(),
         'files': {},
       }, password);
-      expect((await openBackup(encrypted, password))['data']['version'], 1);
+      expect((await openBackup(encrypted, password))['data']['version'], 2);
       await expectLater(
         openBackup(encrypted, 'a-wrong-long-password'),
         throwsA(isA<SecretBoxAuthenticationError>()),
@@ -179,7 +179,7 @@ void main() {
     store.dispose();
   });
   for (final width in [390.0, 1440.0, 320.0]) {
-    testWidgets('four pages and pain form at width $width', (tester) async {
+    testWidgets('five pages and pain form at width $width', (tester) async {
       tester.view.physicalSize = Size(width, 950);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
@@ -202,7 +202,7 @@ void main() {
       await tester.tap(find.text('保存记录'));
       await tester.pumpAndSettle();
       expect(store.records('pain'), hasLength(1));
-      for (final name in ['健康记录', '行程', '我的']) {
+      for (final name in ['健康记录', '行程', '医疗资料', '我的']) {
         await tester.tap(find.text(name).last);
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull, reason: '$name at $width');

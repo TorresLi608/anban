@@ -64,11 +64,9 @@ CareRecord latestJourney(List<CareRecord> records, CareRecord journey) {
   final entries =
       [
         journey,
-        ...records
-            .where(
-              (r) =>
-                  r.kind == 'journeyEntry' && r.text('journeyId') == journey.id,
-            ),
+        ...records.where(
+          (r) => r.kind == 'journeyEntry' && r.text('journeyId') == journey.id,
+        ),
       ]..sort((a, b) {
         final result = DateTime.parse(b.text('last'))
             .compareTo(DateTime.parse(a.text('last')));
@@ -80,7 +78,82 @@ CareRecord latestJourney(List<CareRecord> records, CareRecord journey) {
 class PlannedReminder {
   final DateTime at;
   final String channel, title, body;
-  PlannedReminder(this.at, this.channel, this.title, this.body);
+  final bool daily;
+  final List<String> categories;
+  PlannedReminder(
+    this.at,
+    this.channel,
+    this.title,
+    this.body, {
+    this.daily = false,
+    List<String>? categories,
+  }) : categories = categories ?? [channel];
+}
+
+const reminderNames = {'meal': '用餐', 'water': '喝水', ...journeyCategories};
+
+/// Daily Android alarms do not consume one slot per day. Keep capacity for each
+/// category on iOS so frequent water reminders cannot crowd out meals.
+List<PlannedReminder> scheduleReminders(
+  CareData data,
+  DateTime now, {
+  required bool android,
+}) {
+  final raw = planReminders(data, now);
+  final daily = <String, PlannedReminder>{};
+  final events = <PlannedReminder>[];
+  for (final item in raw) {
+    if (!['meal', 'water'].contains(item.channel)) {
+      events.add(item);
+      continue;
+    }
+    final key = android ? clockText(item.at) : item.at.toIso8601String();
+    final previous = daily[key];
+    if (previous == null) {
+      daily[key] = PlannedReminder(
+        item.at,
+        item.channel,
+        item.title,
+        item.body,
+        daily: android,
+      );
+    } else if (!previous.categories.contains(item.channel) &&
+        previous.at == item.at) {
+      // One alert contains both reminders instead of competing heads-up banners.
+      daily[key] = PlannedReminder(
+        item.at,
+        'meal',
+        '用餐与喝水提醒',
+        '${previous.body}\n${item.body}',
+        daily: android,
+        categories: ['meal', 'water'],
+      );
+    }
+  }
+  final all = [...daily.values, ...events]
+    ..sort((a, b) => a.at.compareTo(b.at));
+  if (android) {
+    final repeating = all.where((r) => r.daily).toList();
+    return [...repeating, ...events.take(450 - repeating.length)]
+      ..sort((a, b) => a.at.compareTo(b.at));
+  }
+  final groups = {
+    for (final category in reminderNames.keys)
+      category: all.where((r) => r.categories.contains(category)).iterator,
+  };
+  final selected = <PlannedReminder>{};
+  var progressed = true;
+  while (selected.length < 60 && progressed) {
+    progressed = false;
+    for (final group in groups.values) {
+      if (group.moveNext()) {
+        progressed = true;
+        selected.add(group.current);
+      }
+      if (selected.length == 60) break;
+    }
+  }
+  return selected.toList()..sort((a, b) => a.at.compareTo(b.at));
 }
 
 List<PlannedReminder> planReminders(

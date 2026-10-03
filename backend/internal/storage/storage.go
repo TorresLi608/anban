@@ -56,6 +56,11 @@ func Open(ctx context.Context, cfg config.Config) (*sql.DB, *minio.Client, error
 			return nil, nil, errors.New("health options initialization failed")
 		}
 	}
+	release := cfg.InitialAndroidRelease()
+	raw, _ := json.Marshal(release)
+	if _, err = db.ExecContext(ctx, `INSERT INTO anban_android_release(id,enabled,release) VALUES(true,$1,$2) ON CONFLICT(id) DO NOTHING`, release != nil, string(raw)); err != nil {
+		return nil, nil, errors.New("Android release initialization failed")
+	}
 	objects, err := minio.New(cfg.MinIOEndpoint, &minio.Options{Creds: credentials.NewStaticV4(cfg.MinIOAccessKey, cfg.MinIOSecretKey, ""), Secure: cfg.MinIOSecure})
 	if err != nil {
 		return nil, nil, err

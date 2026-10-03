@@ -100,6 +100,12 @@ class _SettingsPageState extends State<SettingsPage> {
       }
       await widget.store.settings(values);
       await widget.reminders.refresh(widget.store.data, force: true);
+      if (widget.reminders.lastError != null) {
+        throw StateError('配置已保存，但${widget.reminders.lastError}');
+      }
+      if (widget.reminders.warnings.isNotEmpty) {
+        throw StateError('配置已保存；${widget.reminders.warnings.join('；')}');
+      }
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (mounted) setState(() => error = '$e');
@@ -154,6 +160,17 @@ class _SettingsPageState extends State<SettingsPage> {
         children: [
           Section(
             '用餐提醒',
+            trailing: widget.reminders.supported
+                ? TextButton(
+                    onPressed: saving
+                        ? null
+                        : () => attempt(
+                            context,
+                            () => widget.reminders.testNotification('meal'),
+                          ),
+                    child: const Text('测试通知'),
+                  )
+                : null,
             child: Column(
               children: [
                 toggle('notifyMeal', '用餐通知'),
@@ -167,6 +184,17 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           Section(
             '喝水提醒',
+            trailing: widget.reminders.supported
+                ? TextButton(
+                    onPressed: saving
+                        ? null
+                        : () => attempt(
+                            context,
+                            () => widget.reminders.testNotification('water'),
+                          ),
+                    child: const Text('测试通知'),
+                  )
+                : null,
             child: Column(
               children: [
                 toggle('notifyWater', '喝水通知'),
@@ -196,7 +224,15 @@ class _SettingsPageState extends State<SettingsPage> {
             builder: (_, _) => Note(widget.reminders.status),
           ),
           const SizedBox(height: 16),
-          const Note('手机通知受系统权限和省电设置影响；当前最多安排最近60条，打开应用会续排。浏览器不提供后台系统提醒。'),
+          const Note(
+            '安卓用餐和喝水提醒每天循环；同一时刻会合并成一条提示。iOS 保留最多60条待提醒，按类型分配并在打开应用时续排。通知仍受系统权限和省电设置影响。',
+          ),
+          if (widget.reminders.supported)
+            TextButton(
+              onPressed: () =>
+                  attempt(context, widget.reminders.openSystemSettings),
+              child: const Text('打开系统通知设置'),
+            ),
           if (error != null) Note(error!, urgent: true),
           const SizedBox(height: 16),
           FilledButton(

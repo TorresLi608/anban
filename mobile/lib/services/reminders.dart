@@ -15,6 +15,10 @@ class ReminderService extends ChangeNotifier {
   String _fingerprint = '';
   Future<void> _pending = Future.value();
   bool initialized = false;
+  String? lastError;
+  DateTime? _refillAt;
+  Map<String, DateTime> nextTimes = {};
+  final List<String> warnings = [];
   bool get supported =>
       !kIsWeb &&
       [
@@ -91,11 +95,15 @@ class ReminderService extends ChangeNotifier {
           .map((r) => r.toJson())
           .toList(),
     ]);
-    if (!force && fingerprint == _fingerprint) {
+    if (!force &&
+        fingerprint == _fingerprint &&
+        (_refillAt == null || DateTime.now().isBefore(_refillAt!))) {
       return;
     }
     try {
-      await plugin.cancelAll();
+      lastError = null;
+      warnings.clear();
+      await plugin.cancelAllPendingNotifications();
       tz.setLocalLocation(
         tz.getLocation((await FlutterTimezone.getLocalTimezone()).identifier),
       );
@@ -106,9 +114,13 @@ class ReminderService extends ChangeNotifier {
       final exact =
           android == null ||
           (await android.canScheduleExactNotifications() ?? false);
-      final pending = planReminders(data, DateTime.now());
-      // ponytail: iOS permits 64 pending notifications; schedule earliest 60 and refill on resume.
-      final scheduled = pending.take(60).toList();
+      final scheduled = scheduleReminders(
+        data,
+        DateTime.now(),
+        android: android != null,
+      );
+      nextTimes = {};
+      final lastTimes = <String, DateTime>{};
       for (var i = 0; i < scheduled.length; i++) {
         final p = scheduled[i];
         await plugin.zonedSchedule(
@@ -116,33 +128,78 @@ class ReminderService extends ChangeNotifier {
           title: p.title,
           body: p.body,
           scheduledDate: tz.TZDateTime.from(p.at, tz.local),
-          notificationDetails: NotificationDetails(
-            android: AndroidNotificationDetails(
-              p.channel,
-              p.title,
-              channelDescription: '用餐、喝水与化疗维护行程提醒',
-              importance: Importance.high,
-              priority: Priority.high,
-              visibility: NotificationVisibility.private,
-            ),
-            iOS: const DarwinNotificationDetails(
-              presentAlert: true,
-              presentSound: true,
-            ),
-          ),
+          notificationDetails: details(p.channel),
+          matchDateTimeComponents: p.daily ? DateTimeComponents.time : null,
           androidScheduleMode: exact
               ? AndroidScheduleMode.exactAllowWhileIdle
               : AndroidScheduleMode.inexactAllowWhileIdle,
           payload: p.channel,
         );
+        for (final category in p.categories) {
+          nextTimes.putIfAbsent(category, () => p.at);
+          lastTimes[category] = p.at;
+        }
+      }
+      if (android != null) {
+        if (await android.areNotificationsEnabled() == false) {
+          warnings.add('系统通知权限已关闭');
+        }
+        for (final channel
+            in await android.getNotificationChannels() ??
+                <AndroidNotificationChannel>[]) {
+          if (nextTimes.containsKey(channel.id) &&
+              channel.importance == Importance.none) {
+            warnings.add('${reminderNames[channel.id]}通知渠道已关闭，请打开系统通知设置');
+          }
+        }
+      }
+      _refillAt = android == null && lastTimes.isNotEmpty
+          ? (lastTimes.values.toList()..sort()).first.subtract(
+              const Duration(minutes: 10),
+            )
+          : null;
+      if (_refillAt != null &&
+          _refillAt!.isBefore(DateTime.now().add(const Duration(minutes: 5)))) {
+        _refillAt = DateTime.now().add(const Duration(minutes: 5));
       }
       _fingerprint = fingerprint;
       status = scheduled.isEmpty
           ? '暂无待提醒事项，请检查各项通知开关与行程时间'
-          : '已排至 ${dayKey(scheduled.last.at)} ${clockText(scheduled.last.at)} · 每次打开自动续排${exact ? '' : ' · 未授权精确闹钟，可能延迟'}';
+          : '${android != null ? '用餐与喝水按每天定时循环' : '已为各类提醒保留排程名额，打开应用自动续排'}${exact ? '' : ' · 未授权精确闹钟，可能延迟'}\n${nextTimes.entries.map((e) => '${reminderNames[e.key]}下次：${dayKey(e.value)} ${clockText(e.value)}').join('\n')}${warnings.isEmpty ? '' : '\n${warnings.join('\n')}'}';
     } catch (_) {
-      status = '提醒安排失败，请检查通知与闹钟权限后重试';
+      _fingerprint = '';
+      lastError = '提醒安排失败，请检查通知与闹钟权限后重试';
+      status = lastError!;
     }
     notifyListeners();
+  }
+
+  NotificationDetails details(String channel) => NotificationDetails(
+    android: AndroidNotificationDetails(
+      channel,
+      '${reminderNames[channel] ?? channel}提醒',
+      channelDescription: '安伴照护提醒',
+      importance: Importance.high,
+      priority: Priority.high,
+      visibility: NotificationVisibility.private,
+    ),
+    iOS: const DarwinNotificationDetails(
+      presentAlert: true,
+      presentSound: true,
+    ),
+  );
+
+  Future<void> testNotification(String channel) async {
+    if (!await requestPermission()) throw StateError('请先允许系统通知权限');
+    await plugin.show(
+      id: 900001 + reminderNames.keys.toList().indexOf(channel),
+      title: '${reminderNames[channel]}提醒测试',
+      body: '这是一条测试通知，用于确认声音和提示是否正常。',
+      notificationDetails: details(channel),
+    );
+  }
+
+  Future<void> openSystemSettings() async {
+    await plugin.openAppNotificationSettings();
   }
 }

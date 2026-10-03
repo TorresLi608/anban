@@ -54,6 +54,16 @@ class HomePage extends StatelessWidget {
                     kind == 'pain' ? '记一次疼痛' : '${kindNames[kind]}记录',
                   ),
                 ),
+              OutlinedButton.icon(
+                onPressed: () => editRecord(context, store, 'instruction'),
+                icon: const Icon(Icons.note_alt_outlined),
+                label: const Text('记医嘱'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => navigate(3),
+                icon: const Icon(Icons.folder_outlined),
+                label: const Text('医疗资料'),
+              ),
             ],
           ),
         ),

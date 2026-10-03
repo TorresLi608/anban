@@ -8,6 +8,12 @@ services:
     environment:
       ANBAN_ADDR: "0.0.0.0:8024"
       ANBAN_ORIGINS: "${ANBAN_ORIGINS:-}"
+      ANBAN_ADMIN_USERS: "${ANBAN_ADMIN_USERS:-}"
+      ANBAN_PUBLIC_URL: "${ANBAN_PUBLIC_URL:-}"
+      ANBAN_ANDROID_VERSION_CODE: "${ANBAN_ANDROID_VERSION_CODE:-}"
+      ANBAN_ANDROID_VERSION_NAME: "${ANBAN_ANDROID_VERSION_NAME:-}"
+      ANBAN_ANDROID_DOWNLOAD_URL: "${ANBAN_ANDROID_DOWNLOAD_URL:-}"
+      ANBAN_ANDROID_RELEASE_NOTES: "${ANBAN_ANDROID_RELEASE_NOTES:-}"
       DATABASE_URL: "${DATABASE_URL:?Set DATABASE_URL in .env}"
       MINIO_ENDPOINT: "${MINIO_ENDPOINT:?Set MINIO_ENDPOINT in .env}"
       MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:?Set MINIO_ACCESS_KEY in .env}"
@@ -16,6 +22,8 @@ services:
       MINIO_BUCKET: "${MINIO_BUCKET:-anban}"
       TZ: "${TZ:-Asia/Shanghai}"
     read_only: true
+    tmpfs:
+      - /tmp:size=384m,mode=1777
     cap_drop:
       - ALL
     security_opt:
@@ -26,3 +34,29 @@ services:
       timeout: 5s
       start_period: 20s
       retries: 3
+  admin:
+    build:
+      context: ./admin
+    init: true
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${ANBAN_BIND_IP:-127.0.0.1}:${ANBAN_ADMIN_PORT:-7358}:3000"
+    environment:
+      ANBAN_ADMIN_API_URL: "http://backend:8024"
+      NODE_ENV: production
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
+      NEXT_TELEMETRY_DISABLED: "1"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
