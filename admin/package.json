@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --port 8025",
     "build": "next build && node scripts/prepare-standalone.mjs",
-    "start": "node .next/standalone/server.js",
+    "start": "PORT=${PORT:-8025} node .next/standalone/server.js",
     "lint": "eslint"
   },
   "dependencies": {

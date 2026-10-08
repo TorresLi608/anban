@@ -17,7 +17,7 @@ Next.js App Router + TypeScript + Tailwind CSS v4 + shadcn/ui。管理员登录�
 ANBAN_ADMIN_USERS=你的已注册账号
 ANBAN_ADMIN_API_URL=http://127.0.0.1:8024
 ANBAN_PUBLIC_URL=https://你的Go后端域名
-ANBAN_ADMIN_PORT=7358
+ANBAN_ADMIN_PORT=8025
 ```
 
 `ANBAN_ADMIN_USERS` 可用英文逗号分隔多个账号（不区分大小写）。留空时无人有管理权限；不存在的账号会导致后端启动失败，避免他人抢先注册该名称后获得管理权限。修改授权名单需重启后端。日常版本/选项维护无需重启。
@@ -37,7 +37,7 @@ npm run backend
 npm run admin
 ```
 
-打开 `http://127.0.0.1:7358`，使用已授权的安伴账号和账号密码登录，不需要资料加密密码。`npm run admin` 读取根目录 `.env`，使用开发模式监听本机。`npm run web` 仍为 Flutter Web 预览，与管理端不同。
+打开 `http://127.0.0.1:8025`，使用已授权的安伴账号和账号密码登录，不需要资料加密密码。`npm run admin` 读取根目录 `.env`，使用开发模式监听本机。`npm run web` 仍为 Flutter Web 预览，与管理端不同。
 
 ## 发布安卓版本
 
@@ -76,7 +76,7 @@ docker compose ps
 docker compose logs --tail=100 admin
 ```
 
-根目录 `compose.yaml` 同时启动后端和管理端，管理端通过容器网络访问 `http://backend:8024`。默认宿主机端口 7358，可通过根目录 `.env` 的 `ANBAN_ADMIN_PORT` 修改。
+根目录 `compose.yaml` 同时启动后端和管理端，管理端通过容器网络访问 `http://backend:8024`。默认宿主机端口 8025，可通过根目录 `.env` 的 `ANBAN_ADMIN_PORT` 修改。
 
 ### 只部署管理端
 
@@ -93,11 +93,11 @@ docker compose logs --tail=100 admin
 
 例如 `ANBAN_ADMIN_API_URL=https://api.example.com`。此地址必须能从管理端容器访问；`127.0.0.1` 指向管理端容器自身，不能用于访问容器外的 Go 服务。`ANBAN_ADMIN_USERS`、数据库/MinIO 配置、`ANBAN_PUBLIC_URL` 均配置在 **Go 后端**，不放在管理端容器中。
 
-独立部署默认绑定宿主机 `127.0.0.1:7358`；`ANBAN_ADMIN_BIND_IP` 和 `ANBAN_ADMIN_PORT` 分别控制绑定地址和端口。生产应通过 HTTPS 反向代理访问，否则浏览器不会发送 Secure 会话 Cookie。需要远程代理直接连接端口时，可将绑定地址设为 `0.0.0.0` 并在网络侧限制访问。
+独立部署默认绑定宿主机 `127.0.0.1:8025`；`ANBAN_ADMIN_BIND_IP` 和 `ANBAN_ADMIN_PORT` 分别控制绑定地址和端口。生产应通过 HTTPS 反向代理访问，否则浏览器不会发送 Secure 会话 Cookie。需要远程代理直接连接端口时，可将绑定地址设为 `0.0.0.0` 并在网络侧限制访问。
 
 反向代理需要：
 
-- 管理端域名转发至 `127.0.0.1:7358`；Go 后端域名转发至 `127.0.0.1:8024`。
+- 管理端域名转发至 `127.0.0.1:8025`；Go 后端域名转发至 `127.0.0.1:8024`。
 - 保留正确的 `Host` / `X-Forwarded-Host` / `X-Forwarded-Proto`。不要开放任意 Server Action 跨域来源。
 - 管理端 `/api/apk` 与 Go `/api/v1/admin/apks` 的请求体限制至少 **301 MB**，读写超时至少 **600 秒**（例如 Nginx `client_max_body_size 301m`、`proxy_read_timeout 600s`、`proxy_send_timeout 600s`）。建议关闭上传代理缓冲。公开下载接口也应允许长下载。
 - 后端上传使用临时文件，Compose 已给只读后端提供 384 MB `/tmp`。较多并发上传时增加临时空间；当前界面一次上传一个包。
@@ -106,7 +106,7 @@ docker compose logs --tail=100 admin
 
 ```sh
 npm run admin:build
-HOSTNAME=127.0.0.1 PORT=7358 node --env-file-if-exists=.env admin/.next/standalone/server.js
+HOSTNAME=127.0.0.1 PORT=8025 node --env-file-if-exists=.env admin/.next/standalone/server.js
 ```
 
 构建不需要在线字体服务，也不需要运行中的数据库。构建上下文排除 `.env`、测试文件和本机安装包；数据库/MinIO 凭据仅传给 Go 后端。

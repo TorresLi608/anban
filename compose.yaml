@@ -43,15 +43,15 @@ services:
       backend:
         condition: service_healthy
     ports:
-      - "${ANBAN_BIND_IP:-127.0.0.1}:${ANBAN_ADMIN_PORT:-7358}:3000"
+      - "${ANBAN_BIND_IP:-127.0.0.1}:${ANBAN_ADMIN_PORT:-8025}:8025"
     environment:
       ANBAN_ADMIN_API_URL: "http://backend:8024"
       NODE_ENV: production
       HOSTNAME: "0.0.0.0"
-      PORT: "3000"
+      PORT: "8025"
       NEXT_TELEMETRY_DISABLED: "1"
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8025/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       start_period: 15s

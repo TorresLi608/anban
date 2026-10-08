@@ -68,7 +68,7 @@ npm run backend
 npm run admin
 ```
 
-访问 `http://127.0.0.1:7358`。在“安卓版本”选择 APK，上传成功后自动生成公开下载地址，填写版本名称、递增的版本编号及更新说明，开启“向用户提示更新”并保存。APK 上限 300 MB，可查看上传进度及取消上传；上传完成不会自动发布，保存后才改变客户端的更新提示。
+访问 `http://127.0.0.1:8025`。在“安卓版本”选择 APK，上传成功后自动生成公开下载地址，填写版本名称、递增的版本编号及更新说明，开启“向用户提示更新”并保存。APK 上限 300 MB，可查看上传进度及取消上传；上传完成不会自动发布，保存后才改变客户端的更新提示。
 
 旧版 `.env` 中 `ANBAN_ANDROID_*` 配置仅在数据库首次初始化版本表时导入，之后以网页为准，重启不会覆盖网页保存的内容。关闭发布开关会暂停更新提示并保留版本信息。多人或多页面同时编辑时，旧页面保存会被拒绝，需重新载入后编辑。
 
@@ -112,7 +112,7 @@ ANBAN_API_URL=http://10.0.2.2:8024
 
 仅部署管理端可使用 `admin/compose.yaml`，默认账号说明、独立部署和修改密码步骤见 [管理端说明](admin/README.md)。管理端没有固定默认账号密码，使用后端授权的已注册安伴账号。
 
-安装 Docker Engine / Docker Desktop 和 Compose v2。项目根目录的 `.env` 填写实际 PostgreSQL、MinIO 配置（已有 `.env` 不要覆盖）。数据库和 MinIO 使用现有服务，Compose 启动 Go 后端与 Next.js 管理端。管理端默认监听宿主机 `127.0.0.1:7358`，生产请经 HTTPS 反向代理访问。首次需填写 `ANBAN_ADMIN_USERS` 和 `ANBAN_PUBLIC_URL`，详见 `admin/README.md`。
+安装 Docker Engine / Docker Desktop 和 Compose v2。项目根目录的 `.env` 填写实际 PostgreSQL、MinIO 配置（已有 `.env` 不要覆盖）。数据库和 MinIO 使用现有服务，Compose 启动 Go 后端与 Next.js 管理端。管理端默认监听宿主机 `127.0.0.1:8025`，生产请经 HTTPS 反向代理访问。首次需填写 `ANBAN_ADMIN_USERS` 和 `ANBAN_PUBLIC_URL`，详见 `admin/README.md`。
 
 ```sh
 npm run docker:build   # 构建镜像
