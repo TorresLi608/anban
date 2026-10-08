@@ -49,7 +49,7 @@ export async function adminApi<T>(
 ): Promise<T> {
   const token = (await cookies()).get(sessionCookie)?.value;
   if (!token) throw new ApiError("登录已过期，请重新登录。", 401);
-  // Go verifies the session and administrator role on every read and write.
+  // Go verifies the independent admin session on every read and write.
   return api<T>(`/api/v1/admin/${path}`, options, token);
 }
 

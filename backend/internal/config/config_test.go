@@ -1,13 +1,16 @@
 package config
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestLoad(t *testing.T) {
-	for _, key := range []string{"ANBAN_ADDR", "ANBAN_ORIGINS", "DATABASE_URL", "MINIO_ENDPOINT", "MINIO_ACCESS_KEY", "MINIO_SECRET_KEY", "MINIO_USE_SSL", "MINIO_BUCKET", "ANBAN_ANDROID_VERSION_CODE", "ANBAN_ANDROID_VERSION_NAME", "ANBAN_ANDROID_DOWNLOAD_URL", "ANBAN_ANDROID_RELEASE_NOTES"} {
+	for _, key := range []string{"ANBAN_ADDR", "ANBAN_ORIGINS", "DATABASE_URL", "MINIO_ENDPOINT", "MINIO_ACCESS_KEY", "MINIO_SECRET_KEY", "MINIO_USE_SSL", "MINIO_BUCKET", "ANBAN_ANDROID_VERSION_CODE", "ANBAN_ANDROID_VERSION_NAME", "ANBAN_ANDROID_DOWNLOAD_URL", "ANBAN_ANDROID_RELEASE_NOTES", "ANBAN_ADMIN_USERNAME", "ANBAN_ADMIN_PASSWORD", "ANBAN_PUBLIC_URL"} {
 		t.Setenv(key, "")
 	}
 	cfg := Load()
-	if cfg.Addr != "127.0.0.1:8024" || cfg.MinIOBucket != "anban" || !cfg.MinIOSecure {
+	if cfg.Addr != "127.0.0.1:8024" || cfg.MinIOBucket != "anban" || !cfg.MinIOSecure || cfg.AdminUsername != "admin" || cfg.AdminPassword != "" {
 		t.Fatal("defaults changed")
 	}
 	t.Setenv("ANBAN_ADDR", ":9000")
@@ -18,6 +21,31 @@ func TestLoad(t *testing.T) {
 	cfg = Load()
 	if cfg.Addr != ":9000" || cfg.DatabaseURL != "postgres://test" || cfg.MinIOEndpoint != "storage:9000" || cfg.MinIOSecure || len(cfg.Origins) != 2 {
 		t.Fatal("environment overrides lost")
+	}
+}
+
+func TestAdminCredentials(t *testing.T) {
+	for _, tc := range []struct {
+		username, password string
+		valid              bool
+	}{
+		{"", "", true}, {"admin", "", true}, {"admin", "secret123", true},
+		{"admin", "中文密码六个", true}, {"admin", strings.Repeat("a", 72), true},
+		{"", "secret123", false}, {"ab", "secret123", false}, {"a,b", "secret123", false},
+		{"admin", "12345", false}, {"admin", strings.Repeat("a", 73), false},
+		{"admin", strings.Repeat("密", 25), false},
+	} {
+		cfg := Config{Addr: ":8024", AdminUsername: tc.username, AdminPassword: tc.password}
+		if (cfg.Validate() == nil) != tc.valid {
+			t.Fatalf("unexpected validation for username %q, password length %d", tc.username, len(tc.password))
+		}
+	}
+	t.Setenv("ANBAN_ADMIN_USERNAME", " Custom_Admin ")
+	t.Setenv("ANBAN_ADMIN_PASSWORD", "  secret$123  ")
+	t.Setenv("ANBAN_ADMIN_USERS", "legacy_user")
+	cfg := Load()
+	if cfg.AdminUsername != "custom_admin" || cfg.AdminPassword != "  secret$123  " {
+		t.Fatal("admin environment was not loaded correctly")
 	}
 }
 

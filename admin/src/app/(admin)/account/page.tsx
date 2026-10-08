@@ -1,6 +1,5 @@
 import { ShieldCheck } from "lucide-react";
 import { requireAdmin } from "@/lib/api";
-import { PasswordForm } from "@/components/password-form";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export const metadata = { title: "账号安全" };
@@ -20,12 +19,17 @@ export default async function AccountPage() {
       </header>
       <Alert>
         <ShieldCheck />
-        <AlertTitle>修改安伴账号的登录密码</AlertTitle>
+        <AlertTitle>管理端账号由部署配置管理</AlertTitle>
         <AlertDescription>
-          保存后，该账号在管理端和手机端的登录会话都会失效，请使用新密码重新登录。资料加密密码不变，已保存的照护资料不受影响。
+          <p>
+            修改 Go 后端环境变量 ANBAN_ADMIN_USERNAME 和 ANBAN_ADMIN_PASSWORD
+            后，重新启动后端即可生效。
+          </p>
+          <p>
+            管理端需要重新登录，App 账号密码和登录会话不受影响。
+          </p>
         </AlertDescription>
       </Alert>
-      <PasswordForm />
     </div>
   );
 }

@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 type Config struct {
@@ -24,7 +25,8 @@ type Config struct {
 	AndroidVersionName  string
 	AndroidDownloadURL  string
 	AndroidReleaseNotes string
-	AdminUsers          []string
+	AdminUsername       string
+	AdminPassword       string
 	PublicURL           string
 }
 
@@ -42,7 +44,8 @@ func Load() Config {
 		AndroidVersionName:  strings.TrimSpace(os.Getenv("ANBAN_ANDROID_VERSION_NAME")),
 		AndroidDownloadURL:  strings.TrimSpace(os.Getenv("ANBAN_ANDROID_DOWNLOAD_URL")),
 		AndroidReleaseNotes: strings.TrimSpace(os.Getenv("ANBAN_ANDROID_RELEASE_NOTES")),
-		AdminUsers:          strings.Split(strings.ToLower(os.Getenv("ANBAN_ADMIN_USERS")), ","),
+		AdminUsername:       strings.ToLower(strings.TrimSpace(env("ANBAN_ADMIN_USERNAME", "admin"))),
+		AdminPassword:       os.Getenv("ANBAN_ADMIN_PASSWORD"),
 		PublicURL:           strings.TrimRight(strings.TrimSpace(os.Getenv("ANBAN_PUBLIC_URL")), "/"),
 	}
 }
@@ -61,10 +64,11 @@ func (c Config) Validate() error {
 	if err != nil || strings.ContainsAny(host, "/?#") || numberErr != nil || n < 0 || n > 65535 {
 		return errors.New("ANBAN_ADDR 必须是 host:port（例如 127.0.0.1:8024），不能包含 http://；客户端完整地址请填写 ANBAN_API_URL")
 	}
-	for _, username := range c.AdminUsers {
-		if name := strings.TrimSpace(username); name != "" && !regexp.MustCompile(`^[a-z0-9_]{3,32}$`).MatchString(name) {
-			return errors.New("ANBAN_ADMIN_USERS 应为已注册账号，以英文逗号分隔")
-		}
+	if c.AdminUsername != "" && !regexp.MustCompile(`^[a-z0-9_]{3,32}$`).MatchString(c.AdminUsername) {
+		return errors.New("ANBAN_ADMIN_USERNAME 需 3–32 位小写字母、数字或下划线")
+	}
+	if c.AdminPassword != "" && (c.AdminUsername == "" || utf8.RuneCountInString(c.AdminPassword) < 6 || len(c.AdminPassword) > 72) {
+		return errors.New("请配置 ANBAN_ADMIN_USERNAME，ANBAN_ADMIN_PASSWORD 至少 6 个字符且最多 72 个 UTF-8 字节")
 	}
 	if c.PublicURL != "" {
 		u, err := url.Parse(c.PublicURL)

@@ -17,7 +17,7 @@ export async function login(
   const password = String(form.get("password") || "");
   if (
     !/^[a-zA-Z0-9_]{3,32}$/.test(username) ||
-    password.length < 6 ||
+    [...password].length < 6 ||
     Buffer.byteLength(password) > 72
   )
     return { error: "请输入有效账号和密码。" };
@@ -46,38 +46,13 @@ export async function logout() {
   const token = jar.get(sessionCookie)?.value;
   if (token) {
     try {
-      await api("/api/v1/auth/logout", { method: "POST" }, token);
+      await api("/api/v1/admin/logout", { method: "POST" }, token);
     } catch {
       /* Clear this browser's session even when the backend is unreachable. */
     }
   }
   jar.delete(sessionCookie);
   redirect("/login");
-}
-
-export async function changePassword(
-  _: ActionResult,
-  form: FormData,
-): Promise<ActionResult> {
-  const currentPassword = String(form.get("currentPassword") || "");
-  const newPassword = String(form.get("newPassword") || "");
-  const confirmation = String(form.get("confirmation") || "");
-  if (newPassword !== confirmation)
-    return { error: "两次输入的新密码不一致。" };
-  if ([...newPassword].length < 6 || Buffer.byteLength(newPassword) > 72)
-    return { error: "新密码至少 6 个字符，最多 72 个 UTF-8 字节。" };
-  if (currentPassword === newPassword)
-    return { error: "新密码不能与当前密码相同。" };
-  try {
-    await adminApi("password", {
-      method: "POST",
-      body: JSON.stringify({ currentPassword, newPassword }),
-    });
-  } catch (error) {
-    return { error: errorMessage(error) };
-  }
-  (await cookies()).delete(sessionCookie);
-  redirect("/login?passwordChanged=1");
 }
 
 export async function saveRelease(

@@ -59,7 +59,7 @@ python3 -m http.server 7357 --bind 127.0.0.1 --directory build/web
 
 Android 每次启动自动检查一次，发现更高的 `versionCode` 后显示新版说明，用户点击“前往下载”打开外部浏览器；下载完成后由用户按系统提示安装。登录页及“我的 → 使用偏好 → 检查更新”也可手动检查。自动检查失败保持安静，不影响登录和使用；iOS / Web 不显示此功能。
 
-版本信息现在通过 Web 管理端维护，保存到 PostgreSQL 后立即生效。先按 [管理端说明](admin/README.md) 配置已注册的管理员账号和公开下载域名，然后运行：
+版本信息现在通过 Web 管理端维护，保存到 PostgreSQL 后立即生效。先按 [管理端说明](admin/README.md) 配置独立的管理端账号密码和公开下载域名，然后运行：
 
 ```sh
 npm --prefix admin ci
@@ -110,9 +110,19 @@ ANBAN_API_URL=http://10.0.2.2:8024
 
 ## Docker Compose 部署后端与管理端
 
-仅部署管理端可使用 `admin/compose.yaml`，默认账号说明、独立部署和修改密码步骤见 [管理端说明](admin/README.md)。管理端没有固定默认账号密码，使用后端授权的已注册安伴账号。
+仅部署管理端可使用 `admin/compose.yaml`，账号配置、独立部署和修改密码步骤见 [管理端说明](admin/README.md)。管理端使用独立的环境变量账号密码，无需在 App 注册。
 
-安装 Docker Engine / Docker Desktop 和 Compose v2。项目根目录的 `.env` 填写实际 PostgreSQL、MinIO 配置（已有 `.env` 不要覆盖）。数据库和 MinIO 使用现有服务，Compose 启动 Go 后端与 Next.js 管理端。管理端默认监听宿主机 `127.0.0.1:8025`，生产请经 HTTPS 反向代理访问。首次需填写 `ANBAN_ADMIN_USERS` 和 `ANBAN_PUBLIC_URL`，详见 `admin/README.md`。
+安装 Docker Engine / Docker Desktop 和 Compose v2。本地运行与 Docker 整套部署统一使用根目录的 [.env.example](.env.example) 模板：示例保存占位值，`.env` 保存实际配置，字段、顺序和分组一致。模板更新后，已有 `.env` 不会自动同步，请按示例补齐缺项并保留原有值。
+
+首次使用时执行，再编辑 `.env` 中的 PostgreSQL、MinIO 配置（已有文件不会覆盖）：
+
+```sh
+cp -n .env.example .env
+chmod 600 .env
+docker compose config --quiet  # 填好配置后校验，不打印展开后的凭据
+```
+
+数据库和 MinIO 使用现有服务。Compose 启动 Go 后端与 Next.js 管理端，宿主机端口分别为 `8024`、`8025`，默认绑定 `127.0.0.1`，生产请经 HTTPS 反向代理访问。登录管理端前填写 `ANBAN_ADMIN_USERNAME`（默认 `admin`）和 `ANBAN_ADMIN_PASSWORD`（无默认密码，留空禁用登录），发布 APK 前填写 `ANBAN_PUBLIC_URL`。修改凭据后执行 `docker compose up -d backend`，所有管理端会话失效，App 账号不受影响。旧 `ANBAN_ADMIN_USERS` 授权方式已停用，详见 [管理端说明](admin/README.md)。
 
 ```sh
 npm run docker:build   # 构建镜像

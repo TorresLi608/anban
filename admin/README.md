@@ -1,30 +1,28 @@
 # 安伴管理端
 
-Next.js App Router + TypeScript + Tailwind CSS v4 + shadcn/ui。管理员登录、APK 上传与版本发布、健康选项维护、修改密码均接入现有 Go 服务。
+Next.js App Router + TypeScript + Tailwind CSS v4 + shadcn/ui。管理员登录、APK 上传与版本发布、健康选项维护均接入现有 Go 服务。管理端账号密码通过 Go 后端环境变量配置。
 
-## 默认账号和密码
+## 管理端账号和密码
 
-**没有内置默认账号或默认密码。** 账号为 Go 后端 `ANBAN_ADMIN_USERS` 指定的已注册安伴账号，密码为该账号注册时设置的登录密码。示例配置和测试账号都不是生产登录凭据。
+管理端使用独立账号，无需在安伴 App 注册，也不会创建或修改 App 账号。默认账号名为 `admin`，**没有默认密码**；密码留空时禁用管理端登录。
 
-首次使用按下方步骤注册并授权一次；以后可在“账号安全”修改密码。
-
-## 首次配置
-
-1. 先通过安伴客户端注册一个账号，确认能够登录。管理端不开放注册。
-2. 在项目根目录现有 `.env` 增加配置，不要覆盖数据库与 MinIO 配置：
+在项目根目录的 `.env` 中配置（已有文件按项修改，不要覆盖数据库和 MinIO 配置）：
 
 ```dotenv
-ANBAN_ADMIN_USERS=你的已注册账号
+ANBAN_ADMIN_USERNAME=admin
+ANBAN_ADMIN_PASSWORD='替换为你自己的管理端密码'
 ANBAN_ADMIN_API_URL=http://127.0.0.1:8024
 ANBAN_PUBLIC_URL=https://你的Go后端域名
 ANBAN_ADMIN_PORT=8025
 ```
 
-`ANBAN_ADMIN_USERS` 可用英文逗号分隔多个账号（不区分大小写）。留空时无人有管理权限；不存在的账号会导致后端启动失败，避免他人抢先注册该名称后获得管理权限。修改授权名单需重启后端。日常版本/选项维护无需重启。
+账号支持 3–32 位字母、数字或下划线，不区分大小写；密码至少 6 个字符、最多 72 个 UTF-8 字节，保留大小写与首尾空格。密码可用单引号包裹，避免 `$` 等字符被 Compose 展开。账号和密码只配置在 Go 后端，登录页不会预填或展示密码。
+
+旧 `ANBAN_ADMIN_USERS` 授权方式已停用。升级后填写上述两个新变量，并重新构建、启动后端与管理端：`docker compose up -d --build`。原 App 账号、密码和资料保留，原 App 会话无法访问管理端。
 
 `ANBAN_PUBLIC_URL` 是手机和浏览器均可访问的 **Go 后端 HTTPS 域名**，不是管理端域名，也不是 MinIO 控制台。不含路径或查询参数。APK 上传后生成 `${ANBAN_PUBLIC_URL}/api/v1/app/android-apk/<随机ID>.apk`。未配置时可以登录和编辑健康选项，但不能上传 APK。
 
-`ANBAN_ADMIN_API_URL` 仅供 Next.js 服务器连接 Go 后端，不会发送到浏览器。Docker Compose 内部自动使用 `http://backend:8024`，无需额外配置 CORS。管理员会话保存在 HttpOnly、SameSite=Strict Cookie 中，有效期 8 小时；生产 Cookie 使用 Secure，管理端必须经 HTTPS 访问。
+`ANBAN_ADMIN_API_URL` 仅供 Next.js 服务器连接 Go 后端，不会发送到浏览器。Docker Compose 内部自动使用 `http://backend:8024`，无需额外配置 CORS。浏览器令牌保存在 HttpOnly、SameSite=Strict Cookie 中，有效期 8 小时；生产 Cookie 使用 Secure，管理端必须经 HTTPS 访问。Go 后端只保存密码的 bcrypt 哈希和会话令牌的 SHA-256 摘要，管理端会话存于进程内存，退出或重启后端后失效。当前适用于单个 Go 后端实例；扩展多实例前需改用共享会话存储。
 
 ## 本地运行
 
@@ -37,7 +35,7 @@ npm run backend
 npm run admin
 ```
 
-打开 `http://127.0.0.1:8025`，使用已授权的安伴账号和账号密码登录，不需要资料加密密码。`npm run admin` 读取根目录 `.env`，使用开发模式监听本机。`npm run web` 仍为 Flutter Web 预览，与管理端不同。
+打开 `http://127.0.0.1:8025`，使用 `ANBAN_ADMIN_USERNAME` 和 `ANBAN_ADMIN_PASSWORD` 配置的管理端账号密码登录。`npm run admin` 读取根目录 `.env`，使用开发模式监听本机。`npm run web` 仍为 Flutter Web 预览，与管理端不同。
 
 ## 发布安卓版本
 
@@ -56,15 +54,19 @@ npm run admin
 
 四组可编辑：大便情况、小便情况、小便颜色、小便性状。每行一项，最多 50 项，每项最多 100 字，不允许重复。保存一次原子更新全部四组，用户下次登录生效。移除选项不改变已保存的健康记录。管理端不读取、解密或展示患者资料。
 
-## 修改密码
+## 修改账号或密码
 
-进入“账号安全”，输入当前密码、新密码及确认密码。新密码至少 6 个字符、最多 72 个 UTF-8 字节，且不能与当前密码相同。
+修改 Go 后端 `.env` 中的 `ANBAN_ADMIN_USERNAME` 或 `ANBAN_ADMIN_PASSWORD` 后执行：
 
-修改成功后自动返回登录页，该账号的所有管理端和手机客户端会话都被撤销，需使用新密码重新登录。账号密码与资料加密密码是两件事：修改登录密码不会改变资料加密密码，也不会重新加密或删除照护资料。密码使用 bcrypt 哈希保存；密码更新和会话撤销在同一数据库事务中完成。
+```sh
+docker compose up -d backend
+```
+
+本地通过 `npm run backend` 启动时，停止后重新运行即可。环境变量是管理端凭据的唯一来源，「账号安全」页提供修改说明。重启后全部管理端会话失效，使用新凭据重新登录；App 账号密码和会话不受影响。将密码清空并重新启动后端可禁用管理端登录。
 
 ## 部署
 
-以下两种方式任选一种，不要让两个管理端容器占用同一宿主机端口。前端使用非 root 用户、Next.js standalone 产物和健康检查；密码等账号数据保存在现有 Go 后端数据库中。
+以下两种方式任选一种，不要让两个管理端容器占用同一宿主机端口。前端使用非 root 用户、Next.js standalone 产物和健康检查；管理端凭据由 Go 后端环境变量提供，业务数据保存在现有 PostgreSQL 和 MinIO 中。
 
 ### 与 Go 后端一起部署
 
@@ -91,7 +93,7 @@ docker compose ps
 docker compose logs --tail=100 admin
 ```
 
-例如 `ANBAN_ADMIN_API_URL=https://api.example.com`。此地址必须能从管理端容器访问；`127.0.0.1` 指向管理端容器自身，不能用于访问容器外的 Go 服务。`ANBAN_ADMIN_USERS`、数据库/MinIO 配置、`ANBAN_PUBLIC_URL` 均配置在 **Go 后端**，不放在管理端容器中。
+例如 `ANBAN_ADMIN_API_URL=https://api.example.com`。此地址必须能从管理端容器访问；`127.0.0.1` 指向管理端容器自身，不能用于访问容器外的 Go 服务。`ANBAN_ADMIN_USERNAME`、`ANBAN_ADMIN_PASSWORD`、数据库/MinIO 配置、`ANBAN_PUBLIC_URL` 均配置在 **Go 后端**，不放在管理端容器中。
 
 独立部署默认绑定宿主机 `127.0.0.1:8025`；`ANBAN_ADMIN_BIND_IP` 和 `ANBAN_ADMIN_PORT` 分别控制绑定地址和端口。生产应通过 HTTPS 反向代理访问，否则浏览器不会发送 Secure 会话 Cookie。需要远程代理直接连接端口时，可将绑定地址设为 `0.0.0.0` 并在网络侧限制访问。
 
@@ -127,4 +129,4 @@ go vet ./...
 node --env-file=.env -e 'const {spawnSync}=require("node:child_process");const r=spawnSync("go",["test","-race","-v","./internal/server","-run","TestAdminIntegration"],{cwd:"backend",env:{...process.env,ANBAN_ADMIN_INTEGRATION:"1"},stdio:"inherit"});process.exit(r.status??1)'
 ```
 
-测试在随机命名的独立 PostgreSQL schema 中运行，测试结束删除该 schema 及其中登记的测试 APK 对象，不改动业务资料。数据库账号需要创建 schema 的权限。覆盖管理员权限、改密校验、旧密码失效、全部账号会话撤销、其他账号不受影响、上传/下载、发布/暂停、并发编辑与重启保留配置。
+测试在随机命名的独立 PostgreSQL schema 中运行，测试结束删除该 schema 及其中登记的测试 APK 对象，不改动业务资料。数据库账号需要创建 schema 的权限。覆盖独立管理端登录、同名 App 账号隔离、环境变量凭据变更与旧会话失效、App 会话不受影响、上传/下载、发布/暂停、并发编辑与重启保留业务配置。另有无需数据库的测试覆盖错误凭据、空密码禁用、会话过期、退出、并发访问及登录限流。

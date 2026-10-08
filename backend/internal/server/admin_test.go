@@ -47,7 +47,7 @@ func TestAdminIntegration(t *testing.T) {
 	query.Set("search_path", schema)
 	u.RawQuery = query.Encode()
 	cfg.DatabaseURL = u.String()
-	cfg.AdminUsers = nil
+	cfg.AdminUsername, cfg.AdminPassword = "admin_test", randomID()
 	cfg.PublicURL = "https://downloads.example.test"
 	cfg.AndroidVersionCode, cfg.AndroidVersionName, cfg.AndroidDownloadURL, cfg.AndroidReleaseNotes = "", "", "", ""
 	s, err := New(cfg)
@@ -95,26 +95,26 @@ func TestAdminIntegration(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	creds := map[string]string{"username": "admin_test", "password": randomID()}
+	creds := map[string]string{"username": cfg.AdminUsername, "password": cfg.AdminPassword}
+	mobileCreds := map[string]string{"username": cfg.AdminUsername, "password": randomID()}
 	var registered map[string]any
-	read(request("POST", "/api/v1/auth/register", "", creds), &registered)
+	read(request("POST", "/api/v1/auth/register", "", mobileCreds), &registered)
 	var ordinary map[string]any
 	read(request("POST", "/api/v1/auth/register", "", map[string]string{"username": "ordinary_test", "password": creds["password"]}), &ordinary)
 	s.Close()
-	cfg.AdminUsers = []string{creds["username"]}
 	s, err = New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, path := range []string{"me", "android-release", "health-options"} {
-		if request("GET", "/api/v1/admin/"+path, ordinary["token"].(string), nil).Code != 403 {
+		if request("GET", "/api/v1/admin/"+path, ordinary["token"].(string), nil).Code != 401 {
 			t.Fatal("ordinary user reached admin API")
 		}
-		if request("PUT", "/api/v1/admin/"+path, ordinary["token"].(string), nil).Code != 403 {
+		if request("PUT", "/api/v1/admin/"+path, ordinary["token"].(string), nil).Code != 401 {
 			t.Fatal("ordinary user wrote admin API")
 		}
 	}
-	if request("POST", "/api/v1/admin/login", "", map[string]string{"username": "ordinary_test", "password": creds["password"]}).Code != 403 {
+	if request("POST", "/api/v1/admin/login", "", map[string]string{"username": "ordinary_test", "password": creds["password"]}).Code != 401 {
 		t.Fatal("ordinary user logged into admin")
 	}
 	if request("POST", "/api/v1/admin/login", "", map[string]string{"username": creds["username"], "password": "wrongpassword"}).Code != 401 {
@@ -123,6 +123,18 @@ func TestAdminIntegration(t *testing.T) {
 	var session map[string]any
 	read(request("POST", "/api/v1/admin/login", "", creds), &session)
 	token := session["token"].(string)
+	if request("GET", "/api/v1/admin/me", registered["token"].(string), nil).Code != 401 {
+		t.Fatal("same-name App user reached admin API")
+	}
+	if request("POST", "/api/v1/admin/login", "", mobileCreds).Code != 401 {
+		t.Fatal("App password accepted by admin login")
+	}
+	for _, path := range []string{"/api/v1/auth/me", "/api/v1/vault", "/api/v1/files"} {
+		if request("GET", path, token, nil).Code != 401 {
+			t.Fatal("admin token accessed App data")
+		}
+	}
+
 	var apk bytes.Buffer
 	archive := zip.NewWriter(&apk)
 	entry, _ := archive.Create("AndroidManifest.xml")
@@ -143,7 +155,7 @@ func TestAdminIntegration(t *testing.T) {
 		s.ServeHTTP(w, r)
 		return w
 	}
-	if upload("", "anban.apk", apk.Bytes()).Code != 401 || upload(ordinary["token"].(string), "anban.apk", apk.Bytes()).Code != 403 {
+	if upload("", "anban.apk", apk.Bytes()).Code != 401 || upload(ordinary["token"].(string), "anban.apk", apk.Bytes()).Code != 401 {
 		t.Fatal("unauthorized APK upload accepted")
 	}
 	if upload(token, "anban.txt", apk.Bytes()).Code != 400 || upload(token, "anban.apk", []byte("not an APK")).Code != 400 {
@@ -236,53 +248,45 @@ func TestAdminIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if request("GET", "/api/v1/admin/me", token, nil).Code != 401 {
+		t.Fatal("restart retained admin session")
+	}
+	read(request("POST", "/api/v1/admin/login", "", creds), &session)
+	token = session["token"].(string)
 	var reopened releaseState
 	read(request("GET", "/api/v1/admin/android-release", token, nil), &reopened)
 	if reopened.Revision != saved.Revision || reopened.Enabled || reopened.Release.VersionCode != 2 {
 		t.Fatal("restart overwrote published state")
 	}
-	newPassword := "updated-" + randomID()[:32]
-	passwordChange := map[string]string{"currentPassword": "incorrect-password", "newPassword": newPassword}
-	if request("POST", "/api/v1/admin/password", token, passwordChange).Code != 401 {
-		t.Fatal("password change accepted an incorrect current password")
+	// Environment credential changes revoke only admin sessions and never mutate App accounts.
+	s.Close()
+	cfg.AdminUsername, cfg.AdminPassword = "operator_next", randomID()
+	s, err = New(cfg)
+	if err != nil {
+		t.Fatal(err)
 	}
-	passwordChange["currentPassword"] = creds["password"]
-	passwordChange["newPassword"] = "12345"
-	if request("POST", "/api/v1/admin/password", token, passwordChange).Code != 400 {
-		t.Fatal("password change accepted a short password")
+	if request("GET", "/api/v1/admin/me", token, nil).Code != 401 {
+		t.Fatal("credential change retained old admin session")
 	}
-	passwordChange["newPassword"] = creds["password"]
-	if request("POST", "/api/v1/admin/password", token, passwordChange).Code != 400 {
-		t.Fatal("password change accepted the same password")
-	}
-	passwordChange["newPassword"] = newPassword
-	if request("POST", "/api/v1/admin/password", ordinary["token"].(string), passwordChange).Code != 403 {
-		t.Fatal("ordinary user accessed admin password change")
-	}
-	if request("GET", "/api/v1/admin/me", token, nil).Code != 200 {
-		t.Fatal("failed password changes revoked the current session")
-	}
-	var changed map[string]bool
-	read(request("POST", "/api/v1/admin/password", token, passwordChange), &changed)
-	if !changed["ok"] {
-		t.Fatal("password change not acknowledged")
-	}
-	for _, oldToken := range []string{token, registered["token"].(string)} {
-		if request("GET", "/api/v1/auth/me", oldToken, nil).Code != 401 {
-			t.Fatal("password change did not revoke all account sessions")
+	for _, appToken := range []string{registered["token"].(string), ordinary["token"].(string)} {
+		if request("GET", "/api/v1/auth/me", appToken, nil).Code != 200 {
+			t.Fatal("admin credential change revoked an App session")
 		}
 	}
-	if request("GET", "/api/v1/auth/me", ordinary["token"].(string), nil).Code != 200 {
-		t.Fatal("password change revoked another account's session")
-	}
 	if request("POST", "/api/v1/admin/login", "", creds).Code != 401 {
-		t.Fatal("old password still works")
+		t.Fatal("old admin credentials still work")
 	}
-	creds["password"] = newPassword
+	creds["username"], creds["password"] = cfg.AdminUsername, cfg.AdminPassword
 	read(request("POST", "/api/v1/admin/login", "", creds), &session)
 	token = session["token"].(string)
-	read(request("POST", "/api/v1/auth/login", "", creds), &registered)
-	read(request("POST", "/api/v1/auth/logout", token, nil), &registered)
+	if request("POST", "/api/v1/auth/login", "", creds).Code != 401 {
+		t.Fatal("admin environment credentials created an App account")
+	}
+	read(request("POST", "/api/v1/auth/login", "", mobileCreds), &registered)
+	if request("POST", "/api/v1/admin/password", token, map[string]string{"currentPassword": cfg.AdminPassword, "newPassword": "unwanted-change"}).Code != 404 {
+		t.Fatal("retired password endpoint is still active")
+	}
+	read(request("POST", "/api/v1/admin/logout", token, nil), &registered)
 	if request("GET", "/api/v1/admin/me", token, nil).Code != 401 {
 		t.Fatal("logout did not revoke admin session")
 	}

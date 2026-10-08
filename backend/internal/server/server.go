@@ -3,13 +3,13 @@ package server
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/minio/minio-go/v7"
+	"golang.org/x/crypto/bcrypt"
 
 	"anban/backend/internal/config"
 	"anban/backend/internal/storage"
@@ -17,14 +17,16 @@ import (
 
 // Server routes authenticated requests to the feature handlers.
 type Server struct {
-	db        *sql.DB
-	objects   *minio.Client
-	bucket    string
-	origins   map[string]bool
-	mu        sync.Mutex
-	attempts  map[string][]time.Time
-	admins    map[string]bool
-	publicURL string
+	db                *sql.DB
+	objects           *minio.Client
+	bucket            string
+	origins           map[string]bool
+	mu                sync.Mutex
+	attempts          map[string][]time.Time
+	adminUsername     string
+	adminPasswordHash []byte
+	adminSessions     map[string]time.Time
+	publicURL         string
 }
 
 // New connects the configured services before accepting requests.
@@ -32,26 +34,22 @@ func New(cfg config.Config) (*Server, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
+	var adminHash []byte
+	if cfg.AdminPassword != "" {
+		var err error
+		adminHash, err = bcrypt.GenerateFromPassword([]byte(cfg.AdminPassword), bcrypt.DefaultCost)
+		if err != nil {
+			return nil, err
+		}
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	db, objects, err := storage.Open(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{db: db, objects: objects, bucket: cfg.MinIOBucket, origins: map[string]bool{}, attempts: map[string][]time.Time{}, admins: map[string]bool{}}
+	s := &Server{db: db, objects: objects, bucket: cfg.MinIOBucket, origins: map[string]bool{}, attempts: map[string][]time.Time{}, adminUsername: cfg.AdminUsername, adminPasswordHash: adminHash, adminSessions: map[string]time.Time{}}
 	s.publicURL = cfg.PublicURL
-	for _, username := range cfg.AdminUsers {
-		name := strings.ToLower(strings.TrimSpace(username))
-		if name == "" {
-			continue
-		}
-		var exists bool
-		if err := db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM anban_users WHERE username=$1)`, name).Scan(&exists); err != nil || !exists {
-			db.Close()
-			return nil, fmt.Errorf("管理员账号 %q 不存在或读取失败，请先注册该账号再配置 ANBAN_ADMIN_USERS", name)
-		}
-		s.admins[name] = true
-	}
 	for _, origin := range cfg.Origins {
 		s.origins[strings.TrimSpace(origin)] = true
 	}
@@ -100,6 +98,14 @@ func (c *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, 401, "请先登录")
 		return
 	}
+	if strings.HasPrefix(r.URL.Path, "/api/v1/admin/") {
+		if !c.validAdminSession(token) {
+			fail(w, 401, "管理端登录已过期，请重新登录")
+			return
+		}
+		c.admin(w, r, c.adminUsername)
+		return
+	}
 	err := c.db.QueryRowContext(r.Context(), `SELECT u.id,u.username FROM anban_sessions s JOIN anban_users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now()`, tokenHash(token)).Scan(&user, &username)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -110,12 +116,6 @@ func (c *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
-	case strings.HasPrefix(r.URL.Path, "/api/v1/admin/"):
-		if !c.admins[username] {
-			fail(w, 403, "此账号没有管理权限")
-			return
-		}
-		c.admin(w, r, username)
 	case r.URL.Path == "/api/v1/config/health-options":
 		c.healthOptions(w, r)
 	case r.URL.Path == "/api/v1/auth/me" && r.Method == "GET":

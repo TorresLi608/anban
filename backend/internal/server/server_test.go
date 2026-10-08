@@ -162,7 +162,7 @@ func TestPasswordLength(t *testing.T) {
 
 func TestAdminRequiresAuthentication(t *testing.T) {
 	s := &Server{}
-	for _, path := range []string{"/api/v1/admin/me", "/api/v1/admin/android-release", "/api/v1/admin/health-options", "/api/v1/admin/password"} {
+	for _, path := range []string{"/api/v1/admin/me", "/api/v1/admin/android-release", "/api/v1/admin/health-options", "/api/v1/admin/logout"} {
 		w := httptest.NewRecorder()
 		s.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
 		if w.Code != 401 {

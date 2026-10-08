@@ -69,8 +69,15 @@ func (c *Server) admin(w http.ResponseWriter, r *http.Request, username string) 
 		c.adminHealthOptions(w, r)
 	case "/api/v1/admin/apks":
 		c.uploadAPK(w, r)
-	case "/api/v1/admin/password":
-		c.changePassword(w, r, username)
+	case "/api/v1/admin/logout":
+		if r.Method != "POST" {
+			fail(w, 405, "method not allowed")
+			return
+		}
+		c.mu.Lock()
+		delete(c.adminSessions, tokenHash(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")))
+		c.mu.Unlock()
+		writeJSON(w, 200, map[string]bool{"ok": true})
 	default:
 		fail(w, 404, "not found")
 	}

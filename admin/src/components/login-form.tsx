@@ -21,7 +21,7 @@ export function LoginForm() {
             id="username"
             name="username"
             autoComplete="username"
-            placeholder="已授权的安伴账号"
+            placeholder="管理端账号"
             required
             minLength={3}
             maxLength={32}
@@ -37,7 +37,7 @@ export function LoginForm() {
             name="password"
             type="password"
             autoComplete="current-password"
-            placeholder="输入账号密码"
+            placeholder="输入管理端密码"
             required
             minLength={6}
             disabled={pending}
