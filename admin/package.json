@@ -6,7 +6,8 @@
     "dev": "next dev --port 8025",
     "build": "next build && node scripts/prepare-standalone.mjs",
     "start": "PORT=${PORT:-8025} node .next/standalone/server.js",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --test scripts/*.test.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

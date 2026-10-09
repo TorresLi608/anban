@@ -1,7 +1,8 @@
 "use server";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { adminApi, api, errorMessage, sessionCookie } from "@/lib/api";
+import { shouldUseSecureCookie } from "@/lib/session-cookie";
 import {
   healthFields,
   type ActionResult,
@@ -30,7 +31,7 @@ export async function login(
       return { error: "登录响应无效，请稍后重试。" };
     (await cookies()).set(sessionCookie, result.token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: shouldUseSecureCookie(await headers()),
       sameSite: "strict",
       path: "/",
       maxAge: 8 * 60 * 60,

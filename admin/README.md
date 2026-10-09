@@ -22,7 +22,7 @@ ANBAN_ADMIN_ADDR=127.0.0.1:8025
 
 `ANBAN_PUBLIC_URL` 是手机和浏览器均可访问的 **Go 后端 HTTPS 域名**，不是管理端域名，也不是 MinIO 控制台。不含路径或查询参数。APK 上传后生成 `${ANBAN_PUBLIC_URL}/api/v1/app/android-apk/<随机ID>.apk`。未配置时可以登录和编辑健康选项，但不能上传 APK。
 
-`ANBAN_ADMIN_API_URL` 仅供 Next.js 服务器连接 Go 后端，不会发送到浏览器。Docker Compose 内部自动使用 `http://backend:8024`，无需额外配置 CORS。浏览器令牌保存在 HttpOnly、SameSite=Strict Cookie 中，有效期 8 小时；生产 Cookie 使用 Secure，管理端必须经 HTTPS 访问。Go 后端只保存密码的 bcrypt 哈希和会话令牌的 SHA-256 摘要，管理端会话存于进程内存，退出或重启后端后失效。当前适用于单个 Go 后端实例；扩展多实例前需改用共享会话存储。
+`ANBAN_ADMIN_API_URL` 仅供 Next.js 服务器连接 Go 后端，不会发送到浏览器。Docker Compose 内部自动使用 `http://backend:8024`，无需额外配置 CORS。浏览器令牌保存在 HttpOnly、SameSite=Strict Cookie 中，有效期 8 小时；根据浏览器的访问协议设置 Secure，支持 HTTP IP 直连，并在 HTTPS 访问时启用 Secure。HTTP 不加密账号密码和会话，公网正式部署应使用 HTTPS。Go 后端只保存密码的 bcrypt 哈希和会话令牌的 SHA-256 摘要，管理端会话存于进程内存，退出或重启后端后失效。当前适用于单个 Go 后端实例；扩展多实例前需改用共享会话存储。
 
 ## 本地运行
 
@@ -95,12 +95,12 @@ docker compose logs --tail=100 admin
 
 例如 `ANBAN_ADMIN_API_URL=https://api.example.com`。此地址必须能从管理端容器访问；`127.0.0.1` 指向管理端容器自身，不能用于访问容器外的 Go 服务。`ANBAN_ADMIN_USERNAME`、`ANBAN_ADMIN_PASSWORD`、数据库/MinIO 配置、`ANBAN_PUBLIC_URL` 均配置在 **Go 后端**，不放在管理端容器中。
 
-独立部署使用 `ANBAN_ADMIN_ADDR=127.0.0.1:8025` 配置完整的宿主机监听地址。生产应通过 HTTPS 反向代理访问，否则浏览器不会发送 Secure 会话 Cookie。需要远程代理直接连接端口时，可设为 `ANBAN_ADMIN_ADDR=0.0.0.0:8025` 并在网络侧限制访问。
+独立部署使用 `ANBAN_ADMIN_ADDR=127.0.0.1:8025` 配置完整的宿主机监听地址。公网正式部署应通过 HTTPS 反向代理加密登录和会话。需要远程代理直接连接端口时，可设为 `ANBAN_ADMIN_ADDR=0.0.0.0:8025` 并在网络侧限制访问。
 
 反向代理需要：
 
 - 管理端域名转发至 `127.0.0.1:8025`；Go 后端域名转发至 `127.0.0.1:8024`。
-- 保留正确的 `Host` / `X-Forwarded-Host` / `X-Forwarded-Proto`。不要开放任意 Server Action 跨域来源。
+- 保留正确的 `Host` / `X-Forwarded-Host`；代理应覆盖 `X-Forwarded-Proto` 为浏览器连接的协议（如 Nginx 的 `$scheme`），不要透传客户端传入的同名头。不要开放任意 Server Action 跨域来源。
 - 管理端 `/api/apk` 与 Go `/api/v1/admin/apks` 的请求体限制至少 **301 MB**，读写超时至少 **600 秒**（例如 Nginx `client_max_body_size 301m`、`proxy_read_timeout 600s`、`proxy_send_timeout 600s`）。建议关闭上传代理缓冲。公开下载接口也应允许长下载。
 - 后端上传使用临时文件，Compose 已给只读后端提供 384 MB `/tmp`。较多并发上传时增加临时空间；当前界面一次上传一个包。
 
