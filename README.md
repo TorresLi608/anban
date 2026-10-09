@@ -138,6 +138,8 @@ npm run docker:down    # 停止并移除容器，不删除外部数据库或MinI
 
 镜像采用 Go 多阶段构建，运行时只包含二进制、CA证书和时区数据，以非root用户运行。构建上下文限定在 `backend/` 并使用白名单，`.env`、Git历史、客户端和本地数据不会进入镜像；实际凭据只在运行时注入，不写进 Dockerfile。
 
+Go 构建阶段使用 `https://goproxy.cn` 下载公共依赖，保留 Go 默认的依赖校验，避免服务器访问 `proxy.golang.org` 超时。此设置仅用于镜像构建，无需在 `.env` 中添加配置。
+
 ```sh
 docker compose config --quiet  # 只校验，不打印展开后的凭据
 docker compose ps
