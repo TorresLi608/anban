@@ -70,7 +70,7 @@ npm run admin
 
 访问 `http://127.0.0.1:8025`。在“安卓版本”选择 APK，上传成功后自动生成公开下载地址，填写版本名称、递增的版本编号及更新说明，开启“向用户提示更新”并保存。APK 上限 300 MB，可查看上传进度及取消上传；上传完成不会自动发布，保存后才改变客户端的更新提示。
 
-旧版 `.env` 中 `ANBAN_ANDROID_*` 配置仅在数据库首次初始化版本表时导入，之后以网页为准，重启不会覆盖网页保存的内容。关闭发布开关会暂停更新提示并保留版本信息。多人或多页面同时编辑时，旧页面保存会被拒绝，需重新载入后编辑。
+安卓版本直接在管理端发布，`.env` 无需填写版本信息，重启不会覆盖网页保存的内容。关闭发布开关会暂停更新提示并保留版本信息。多人或多页面同时编辑时，旧页面保存会被拒绝，需重新载入后编辑。
 
 发布流程：
 
@@ -132,7 +132,9 @@ npm run docker:down    # 停止并移除容器，不删除外部数据库或MinI
 
 服务器没有 Node.js 时直接执行对应的 `docker compose build`、`docker compose up -d`、`docker compose down` 即可。修改代码后重新 build、up；修改 `.env` 后重新 up。
 
-容器固定监听 `0.0.0.0:8024`，覆盖普通本地启动所用的 `ANBAN_ADDR`。宿主机默认发布到 `127.0.0.1:8024`，可供同机 HTTPS 反向代理使用；可用 `.env` 的 `ANBAN_BIND_IP`、`ANBAN_PORT` 修改宿主机绑定地址和端口。需要外部直接访问时设 `ANBAN_BIND_IP=0.0.0.0`；正式客户端仍需 HTTPS API 地址。数据库/MinIO 地址必须能从容器访问，容器里的 localhost 指容器自身。
+`.env` 使用完整的 `IP:端口`：`ANBAN_ADDR=127.0.0.1:8024` 控制后端，`ANBAN_ADMIN_ADDR=127.0.0.1:8025` 控制管理端。本地启动使用这两个监听地址，Docker 用它们发布宿主机端口，容器内部仍固定监听 `0.0.0.0:8024` / `0.0.0.0:8025`。默认供同机 HTTPS 反向代理访问；需要外部直接访问时，将对应地址改成 `0.0.0.0:8024` 或 `0.0.0.0:8025`。正式客户端仍需 HTTPS API 地址。数据库/MinIO 地址必须能从容器访问，容器里的 localhost 指容器自身。
+
+旧配置中的 `ANBAN_BIND_IP`、`ANBAN_PORT`、`ANBAN_ADMIN_BIND_IP`、`ANBAN_ADMIN_PORT` 已移除；升级时将 IP 和端口合并填写到上述两个地址。Docker 后端时区固定为 `Asia/Shanghai`，无需配置 `TZ`。
 
 镜像采用 Go 多阶段构建，运行时只包含二进制、CA证书和时区数据，以非root用户运行。构建上下文限定在 `backend/` 并使用白名单，`.env`、Git历史、客户端和本地数据不会进入镜像；实际凭据只在运行时注入，不写进 Dockerfile。
 
@@ -185,14 +187,14 @@ npm run backend
 
 | 环境变量 | 说明 |
 | --- | --- |
-| `ANBAN_ADDR` | 默认 `127.0.0.1:8024` |
+| `ANBAN_ADDR` | 后端本地监听 / Docker 宿主机地址，默认 `127.0.0.1:8024` |
+| `ANBAN_ADMIN_ADDR` | 管理端本地监听 / Docker 宿主机地址，默认 `127.0.0.1:8025` |
 | `ANBAN_ORIGINS` | 逗号分隔的浏览器 Origin 白名单 |
 | `DATABASE_URL` | PostgreSQL 连接串，按实际环境配置 |
 | `MINIO_ENDPOINT` | S3 API 地址，例如 `s3.example.com:9000`，不含协议或路径，不使用控制台端口 |
 | `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | 仅在后端设置 |
 | `MINIO_USE_SSL` | 默认 `true`；当前 MinIO HTTP 服务设为 `false` |
 | `MINIO_BUCKET` | `anban`，需预先创建为私有桶 |
-| `TZ` | `Asia/Shanghai`；数据库时间使用 timestamptz |
 
 启动会创建安伴账号、会话、快照、附件和健康选项表，以及 `anban_android_release`、`anban_apks` 管理表，不修改其他业务表。应使用专用数据库用户和私有桶权限。生产使用 HTTPS 反向代理安伴后端，并将请求体限制设为至少 40 MB、上传超时至少 120 秒；APK 上传另外需要至少 301 MB 请求体与 600 秒超时（见管理端说明）。客户端仅允许 localhost/模拟器地址使用 HTTP。可通过 `flutter run --dart-define=ANBAN_API_URL=https://你的后端域名` 预填服务地址。当前 `.env` 的数据库连接为 `sslmode=prefer`，正式部署应配置证书并使用 `verify-full`，或使用可信私有网络。
 

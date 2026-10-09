@@ -7,7 +7,7 @@ services:
     init: true
     restart: unless-stopped
     ports:
-      - "${ANBAN_ADMIN_BIND_IP:-127.0.0.1}:${ANBAN_ADMIN_PORT:-8025}:8025"
+      - "${ANBAN_ADMIN_ADDR:-127.0.0.1:8025}:8025"
     environment:
       ANBAN_ADMIN_API_URL: "${ANBAN_ADMIN_API_URL:?Set the Go backend URL reachable from this container}"
       NODE_ENV: production

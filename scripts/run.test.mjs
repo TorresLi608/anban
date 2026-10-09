@@ -78,3 +78,47 @@ test('root web and backend scripts use the correct directory and load .env', () 
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('root admin script loads its full address and rejects invalid addresses', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'anban-admin-')));
+  try {
+    mkdirSync(join(root, 'scripts'));
+    mkdirSync(join(root, 'admin/node_modules/next/dist/bin'), { recursive: true });
+    copyFileSync(new URL('../package.json', import.meta.url), join(root, 'package.json'));
+    copyFileSync(new URL('./run-admin.mjs', import.meta.url), join(root, 'scripts/run-admin.mjs'));
+    const output = join(root, 'result.json');
+    writeFileSync(join(root, 'admin/node_modules/next/dist/bin/next'), `
+      require('node:fs').writeFileSync(process.env.TEST_OUTPUT, JSON.stringify({
+        args: process.argv.slice(2), api: process.env.ANBAN_ADMIN_API_URL,
+      }));
+      process.exit(Number(process.env.TEST_EXIT || 0));
+    `);
+    const env = { ...process.env, TEST_OUTPUT: output, TEST_EXIT: '0' };
+    delete env.ANBAN_ADMIN_ADDR;
+    delete env.ANBAN_ADMIN_API_URL;
+    const run = (address, args = ['--run', 'admin']) => {
+      writeFileSync(join(root, '.env'), `ANBAN_ADMIN_ADDR=${address}\nANBAN_ADMIN_API_URL=http://127.0.0.1:19024\n`);
+      return spawnSync(process.execPath, args, { cwd: root, env, encoding: 'utf8' });
+    };
+    for (const [address, hostname, port] of [
+      ['', '127.0.0.1', '8025'],
+      ['127.0.0.2:19025', '127.0.0.2', '19025'],
+      ['[::1]:19025', '::1', '19025'],
+    ]) {
+      const result = run(address);
+      assert.equal(result.status, 0, result.stderr);
+      const actual = JSON.parse(readFileSync(output, 'utf8'));
+      assert.deepEqual(actual.args, ['dev', `${join(root, 'admin')}/`, '--hostname', hostname, '--port', port]);
+      assert.equal(actual.api, 'http://127.0.0.1:19024');
+    }
+    for (const address of ['http://127.0.0.1:8025', 'localhost', 'localhost:0', 'localhost:65536']) {
+      const result = run(address);
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /ANBAN_ADMIN_ADDR 必须是 host:port/);
+    }
+    env.TEST_EXIT = '7';
+    assert.equal(run('127.0.0.1:8025', ['--env-file=.env', 'scripts/run-admin.mjs']).status, 7);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

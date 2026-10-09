@@ -13,7 +13,7 @@ ANBAN_ADMIN_USERNAME=admin
 ANBAN_ADMIN_PASSWORD='替换为你自己的管理端密码'
 ANBAN_ADMIN_API_URL=http://127.0.0.1:8024
 ANBAN_PUBLIC_URL=https://你的Go后端域名
-ANBAN_ADMIN_PORT=8025
+ANBAN_ADMIN_ADDR=127.0.0.1:8025
 ```
 
 账号支持 3–32 位字母、数字或下划线，不区分大小写；密码至少 6 个字符、最多 72 个 UTF-8 字节，保留大小写与首尾空格。密码可用单引号包裹，避免 `$` 等字符被 Compose 展开。账号和密码只配置在 Go 后端，登录页不会预填或展示密码。
@@ -35,7 +35,7 @@ npm run backend
 npm run admin
 ```
 
-打开 `http://127.0.0.1:8025`，使用 `ANBAN_ADMIN_USERNAME` 和 `ANBAN_ADMIN_PASSWORD` 配置的管理端账号密码登录。`npm run admin` 读取根目录 `.env`，使用开发模式监听本机。`npm run web` 仍为 Flutter Web 预览，与管理端不同。
+默认打开 `http://127.0.0.1:8025`，使用 `ANBAN_ADMIN_USERNAME` 和 `ANBAN_ADMIN_PASSWORD` 配置的管理端账号密码登录。`npm run admin` 读取根目录 `.env`，按 `ANBAN_ADMIN_ADDR` 的 IP 和端口启动开发服务。`npm run web` 仍为 Flutter Web 预览，与管理端不同。
 
 ## 发布安卓版本
 
@@ -48,7 +48,7 @@ npm run admin
 
 安装包保存在现有 MinIO 私有桶的 `releases/android/` 目录，下载经过 Go 服务的独立公开接口，支持 Range 和 HEAD。普通账号无法上传；公开链接只用于 APK，不会公开照护附件。每次上传生成新对象，不覆盖旧包。已上传但未发布的包及历史包暂时保留，不会自动清理，以免破坏已有下载链接。改动公开域名后，新上传使用新域名；旧链接应保留域名或通过代理转发。
 
-旧 `.env` 的 `ANBAN_ANDROID_*` 字段仅用于版本表第一次初始化。之后以数据库为准，不会在重启时覆盖网页内容。保存带版本校验，多页面编辑冲突会提示重新载入，表单内容不会被失败响应清空。
+安卓版本通过管理端发布，无需在 `.env` 中填写版本信息。版本以数据库为准，不会在重启时覆盖网页内容。保存带版本校验，多页面编辑冲突会提示重新载入，表单内容不会被失败响应清空。
 
 ## 健康选项
 
@@ -78,7 +78,7 @@ docker compose ps
 docker compose logs --tail=100 admin
 ```
 
-根目录 `compose.yaml` 同时启动后端和管理端，管理端通过容器网络访问 `http://backend:8024`。默认宿主机端口 8025，可通过根目录 `.env` 的 `ANBAN_ADMIN_PORT` 修改。
+根目录 `compose.yaml` 同时启动后端和管理端，管理端通过容器网络访问 `http://backend:8024`。默认宿主机地址 `127.0.0.1:8025`，可通过根目录 `.env` 的 `ANBAN_ADMIN_ADDR` 修改。
 
 ### 只部署管理端
 
@@ -95,7 +95,7 @@ docker compose logs --tail=100 admin
 
 例如 `ANBAN_ADMIN_API_URL=https://api.example.com`。此地址必须能从管理端容器访问；`127.0.0.1` 指向管理端容器自身，不能用于访问容器外的 Go 服务。`ANBAN_ADMIN_USERNAME`、`ANBAN_ADMIN_PASSWORD`、数据库/MinIO 配置、`ANBAN_PUBLIC_URL` 均配置在 **Go 后端**，不放在管理端容器中。
 
-独立部署默认绑定宿主机 `127.0.0.1:8025`；`ANBAN_ADMIN_BIND_IP` 和 `ANBAN_ADMIN_PORT` 分别控制绑定地址和端口。生产应通过 HTTPS 反向代理访问，否则浏览器不会发送 Secure 会话 Cookie。需要远程代理直接连接端口时，可将绑定地址设为 `0.0.0.0` 并在网络侧限制访问。
+独立部署使用 `ANBAN_ADMIN_ADDR=127.0.0.1:8025` 配置完整的宿主机监听地址。生产应通过 HTTPS 反向代理访问，否则浏览器不会发送 Secure 会话 Cookie。需要远程代理直接连接端口时，可设为 `ANBAN_ADMIN_ADDR=0.0.0.0:8025` 并在网络侧限制访问。
 
 反向代理需要：
 
