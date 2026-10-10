@@ -3,5 +3,7 @@
   <base-config cleartextTrafficPermitted="false" />
   <domain-config cleartextTrafficPermitted="true">
     <domain>localhost</domain><domain>127.0.0.1</domain><domain>10.0.2.2</domain>
+    <!-- Temporary test server; remove after enabling HTTPS. -->
+    <domain includeSubdomains="false">103.236.97.108</domain>
   </domain-config>
 </network-security-config>

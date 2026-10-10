@@ -102,6 +102,8 @@ ANBAN_API_URL=http://10.0.2.2:8024
 
 修改地址后停止原来的Flutter运行进程，再运行 `npm run android`；热重载不会改变 Dart 编译参数。真机需使用可访问的HTTPS后端地址。直接执行 `flutter run` 时，仍须手动传 `--dart-define=ANBAN_API_URL=...`。
 
+临时 Android 联调例外：App 地址校验和 Android 网络配置允许 `http://103.236.97.108:8024`，可将根目录 `.env` 的 `ANBAN_API_URL` 设为该地址后重新构建运行；其他公网地址仍需 HTTPS。HTTP 登录密码和会话为明文传输，仅用于测试。部署 HTTPS 后同步移除 `mobile/lib/services/sync.dart` 与 `mobile/android/app/src/main/res/xml/network_security_config.xml` 中的该 IP 例外。
+
 ### 本地后端启动与停止
 
 `npm run backend`（或 `pnpm run backend`）默认使用8024端口。启动前通过`lsof`查找该端口的监听进程，先发送SIGTERM，未退出时再强制结束；此操作会结束占用该端口的其他程序。脚本收到Ctrl+C、SIGTERM或终端关闭信号时，清理本次启动的Go进程组，包括`go run`生成的子进程，释放端口。

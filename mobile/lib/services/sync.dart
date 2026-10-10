@@ -23,12 +23,14 @@ class VaultSync {
                   '127.0.0.1',
                   '10.0.2.2',
                   '::1',
+                  // ponytail: temporary test server; remove after enabling HTTPS.
+                  '103.236.97.108',
                 ].contains(uri.host))) ||
         uri.userInfo.isNotEmpty ||
         uri.host.isEmpty ||
         uri.hasQuery ||
         uri.hasFragment) {
-      throw const FormatException('请使用 HTTPS 服务地址；本机调试可使用 HTTP');
+      throw const FormatException('请使用 HTTPS 服务地址；HTTP 仅允许本机或指定测试服务器');
     }
     return uri.replace(path: '/api/v1/vault');
   }
