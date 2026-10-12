@@ -7,6 +7,11 @@ import '../data/models.dart';
 import '../data/attachments.dart';
 import '../data/vault.dart';
 
+class VaultSyncException extends StateError {
+  final int statusCode;
+  VaultSyncException(this.statusCode, super.message);
+}
+
 class VaultSync {
   final Uri url;
   final String token;
@@ -45,7 +50,7 @@ class VaultSync {
       try {
         message = jsonDecode(utf8.decode(r.bodyBytes))['error'] as String;
       } catch (_) {}
-      throw StateError(message);
+      throw VaultSyncException(r.statusCode, message);
     }
     return Map<String, dynamic>.from(
       jsonDecode(utf8.decode(r.bodyBytes)) as Map,

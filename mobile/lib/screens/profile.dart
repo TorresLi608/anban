@@ -18,11 +18,13 @@ class ProfilePage extends StatefulWidget {
   final CareStore store;
   final ReminderService reminders;
   final bool loginOnly;
+  final String? restoreError;
   const ProfilePage({
     super.key,
     required this.store,
     required this.reminders,
     this.loginOnly = false,
+    this.restoreError,
   });
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -263,7 +265,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Note(
-                      '资料和附件保存在云端，登录时自动读取。资料加密密码仅在当前会话使用；已有云端资料请填写原备份密码，遗失无法恢复。',
+                      '登录后自动读取云端资料，此设备会安全记住登录状态和资料加密密码。首次登录请填写原资料密码；新账号请设置新密码，遗失无法恢复。',
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
@@ -300,10 +302,13 @@ class _ProfilePageState extends State<ProfilePage> {
                       obscureText: true,
                       autocorrect: false,
                       enableSuggestions: false,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: '资料加密密码（至少 6 个字符）',
+                        helperText: register ? '设置用于加密云端资料的密码' : '此设备已记住时可留空',
                       ),
-                      validator: (v) => (v?.runes.length ?? 0) < 6
+                      validator: (v) => !register && (v?.isEmpty ?? true)
+                          ? null
+                          : (v?.runes.length ?? 0) < 6
                           ? '请输入原备份密码；新账号请设置新密码'
                           : null,
                     ),
@@ -393,6 +398,21 @@ class _ProfilePageState extends State<ProfilePage> {
             const Text('安伴 · 云端照护空间', style: TextStyle(fontSize: 26)),
             const SizedBox(height: 16),
             const Text('登录后读取云端资料，记录自动保存。', textAlign: TextAlign.center),
+            if (widget.restoreError != null) ...[
+              const SizedBox(height: 16),
+              Note(widget.restoreError!, urgent: true),
+              TextButton(
+                onPressed: busy
+                    ? null
+                    : () => run(() async {
+                        if (!await Account.restore(widget.store) &&
+                            context.mounted) {
+                          toast(context, '登录已过期，请重新登录；此设备已记住的资料密码可留空');
+                        }
+                      }),
+                child: const Text('重试自动登录'),
+              ),
+            ],
             const SizedBox(height: 24),
             if (busy)
               const LinearProgressIndicator()

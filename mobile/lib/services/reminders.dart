@@ -31,6 +31,7 @@ class ReminderService extends ChangeNotifier {
       return;
     }
     try {
+      lastError = null;
       tzdata.initializeTimeZones();
       tz.setLocalLocation(
         tz.getLocation((await FlutterTimezone.getLocalTimezone()).identifier),
@@ -46,34 +47,50 @@ class ReminderService extends ChangeNotifier {
         ),
       );
       initialized = true;
-    } catch (_) {
-      status = '提醒初始化失败，请检查设备设置';
+      status = '提醒服务已就绪';
+    } catch (e) {
+      initialized = false;
+      lastError = '提醒初始化失败：$e';
+      status = lastError!;
     }
+    notifyListeners();
   }
 
-  Future<bool> requestPermission() async {
-    if (!supported || !initialized) {
-      return false;
-    }
+  Future<bool> requestPermission({bool exactAlarms = true}) async {
+    if (!supported) throw StateError(status);
+    if (!initialized) await initialize();
+    if (!initialized) throw StateError(lastError ?? '提醒服务未初始化');
     final android = plugin
         .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin
         >();
     if (android != null) {
-      final allowed = await android.requestNotificationsPermission() ?? false;
-      if (!allowed) {
+      var allowed = await android.areNotificationsEnabled();
+      if (allowed != true) {
+        final requested = await android.requestNotificationsPermission();
+        allowed = await android.areNotificationsEnabled() ?? requested;
+      }
+      if (allowed != true) {
         status = '通知权限未开启，请在系统设置中允许通知';
         notifyListeners();
         return false;
       }
-      await android.requestExactAlarmsPermission();
+      if (exactAlarms &&
+          await android.canScheduleExactNotifications() != true) {
+        await android.requestExactAlarmsPermission();
+      }
       return true;
     }
-    return await plugin
-            .resolvePlatformSpecificImplementation<
-              IOSFlutterLocalNotificationsPlugin
-            >()
-            ?.requestPermissions(alert: true, sound: true, badge: false) ??
+    final ios = plugin
+        .resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin
+        >();
+    if ((await ios?.checkPermissions())?.isEnabled == true) return true;
+    return await ios?.requestPermissions(
+          alert: true,
+          sound: true,
+          badge: false,
+        ) ??
         false;
   }
 
@@ -190,7 +207,9 @@ class ReminderService extends ChangeNotifier {
   );
 
   Future<void> testNotification(String channel) async {
-    if (!await requestPermission()) throw StateError('请先允许系统通知权限');
+    if (!await requestPermission(exactAlarms: false)) {
+      throw StateError('请先允许系统通知权限');
+    }
     await plugin.show(
       id: 900001 + reminderNames.keys.toList().indexOf(channel),
       title: '${reminderNames[channel]}提醒测试',

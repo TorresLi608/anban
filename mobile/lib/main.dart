@@ -23,11 +23,24 @@ Future<void> main() async {
     final vault = await LocalVault.memory();
     final store = CareStore(vault, await vault.load());
     store.publish = (_, _) async => throw StateError('请先登录');
+    String? restoreError;
+    try {
+      await Account.restore(store);
+    } catch (e) {
+      restoreError = '自动登录暂未完成，请检查网络后重试。\n$e';
+    }
     final reminders = ReminderService();
     await reminders.initialize();
     // Existing system reminders survive opening the login screen. Reschedule
     // after login; explicit logout/settings changes still cancel old schedules.
-    runApp(AnbanApp(store: store, reminders: reminders, requireLogin: true));
+    runApp(
+      AnbanApp(
+        store: store,
+        reminders: reminders,
+        requireLogin: true,
+        restoreError: restoreError,
+      ),
+    );
   } catch (e) {
     runApp(
       MaterialApp(
@@ -64,11 +77,13 @@ class AnbanApp extends StatelessWidget {
   final CareStore store;
   final ReminderService reminders;
   final bool requireLogin;
+  final String? restoreError;
   const AnbanApp({
     super.key,
     required this.store,
     required this.reminders,
     this.requireLogin = true,
+    this.restoreError,
   });
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -179,6 +194,7 @@ class AnbanApp extends StatelessWidget {
                         store: store,
                         reminders: reminders,
                         loginOnly: true,
+                        restoreError: restoreError,
                       ),
                     ),
                   ),

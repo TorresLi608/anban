@@ -16,6 +16,64 @@ class Account {
   static Map<String, dynamic>? current;
   static VaultSync? _api;
   static String? _password;
+  static const _secure = FlutterSecureStorage(
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.unlocked_this_device,
+    ),
+  );
+  static const _sessionKey = 'anban-account';
+
+  static String _passwordKey(String base, String username) {
+    final identity = [
+      VaultSync(base, '').url.replace(path: '').toString(),
+      username.trim().toLowerCase(),
+    ];
+    return 'anban-encryption:${base64UrlEncode(utf8.encode(jsonEncode(identity)))}';
+  }
+
+  static Future<bool> restore(CareStore store) async {
+    final saved = await _secure.read(key: _sessionKey);
+    if (saved == null) return false;
+    late Map<String, dynamic> session;
+    try {
+      session = Map<String, dynamic>.from(jsonDecode(saved) as Map);
+      final expires = DateTime.tryParse(session['expiresAt'] as String? ?? '');
+      if (session['server'] is! String ||
+          session['username'] is! String ||
+          !_validSession(session) ||
+          expires == null ||
+          !expires.isAfter(DateTime.now()) ||
+          VaultSync(session['server'], '').url != VaultSync(apiBase, '').url) {
+        await _secure.delete(key: _sessionKey);
+        return false;
+      }
+    } on FormatException {
+      await _secure.delete(key: _sessionKey);
+      return false;
+    } on TypeError {
+      await _secure.delete(key: _sessionKey);
+      return false;
+    }
+    final encryptionPassword = await _secure.read(
+      key: _passwordKey(session['server'], session['username']),
+    );
+    if (encryptionPassword == null || encryptionPassword.runes.length < 6) {
+      await _secure.delete(key: _sessionKey);
+      return false;
+    }
+    try {
+      await _connect(store, session, encryptionPassword);
+      return true;
+    } on VaultSyncException catch (e) {
+      if (e.statusCode != 401) rethrow;
+      await _secure.delete(key: _sessionKey);
+      return false;
+    }
+  }
+
+  static bool _validSession(Map<String, dynamic> session) =>
+      RegExp(r'^[a-f0-9]{64}$').hasMatch(session['userId']?.toString() ?? '') &&
+      RegExp(r'^[a-f0-9]{64}$').hasMatch(session['token']?.toString() ?? '');
 
   static Future<void> login(
     CareStore store,
@@ -25,8 +83,12 @@ class Account {
     bool register,
     String encryptionPassword,
   ) async {
+    if (encryptionPassword.isEmpty && !register) {
+      encryptionPassword =
+          await _secure.read(key: _passwordKey(base, username)) ?? '';
+    }
     if (encryptionPassword.runes.length < 6) {
-      throw const FormatException('资料加密密码至少 6 个字符');
+      throw const FormatException('请填写资料加密密码（至少 6 个字符），成功登录后此设备会记住');
     }
     final guest = VaultSync(base, '');
     final response = guest.check(
@@ -40,13 +102,21 @@ class Account {
           )
           .timeout(const Duration(seconds: 30)),
     );
-    if (!RegExp(r'^[a-f0-9]{64}$')
-            .hasMatch(response['userId']?.toString() ?? '') ||
-        !RegExp(r'^[a-f0-9]{64}$')
-            .hasMatch(response['token']?.toString() ?? '')) {
+    if (!_validSession(response)) {
       throw const FormatException('服务器返回了无效会话');
     }
-    final api = VaultSync(base, response['token']);
+    await _connect(store, {
+      ...response,
+      'server': guest.url.replace(path: '').toString(),
+    }, encryptionPassword);
+  }
+
+  static Future<void> _connect(
+    CareStore store,
+    Map<String, dynamic> session,
+    String encryptionPassword,
+  ) async {
+    final api = VaultSync(session['server'], session['token']);
     await store.exclusive(() async {
       final vault = await LocalVault.memory();
       try {
@@ -72,12 +142,13 @@ class Account {
         final remote = await api.pull(encryptionPassword, allowEmpty: true);
         await api.loadInto(vault, remote, encryptionPassword);
         final data = remote.data;
-        // Remove the persisted session from older versions; new sessions live only in memory.
-        await const FlutterSecureStorage().delete(key: 'anban-account');
-        current = {
-          ...response,
-          'server': guest.url.replace(path: '').toString(),
-        };
+        // Persist only after cloud data has been successfully decrypted.
+        await _secure.write(
+          key: _passwordKey(session['server'], session['username']),
+          value: encryptionPassword,
+        );
+        await _secure.write(key: _sessionKey, value: jsonEncode(session));
+        current = session;
         _api = api;
         _password = encryptionPassword;
         store.healthOptions = configured;
@@ -115,6 +186,7 @@ class Account {
           .timeout(const Duration(seconds: 30));
       if (response.statusCode != 401) api.check(response);
     }
+    await _secure.delete(key: _sessionKey);
     final vault = await LocalVault.memory();
     current = null;
     _api = null;
