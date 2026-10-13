@@ -113,7 +113,7 @@ class _SettingsPageState extends State<SettingsPage> {
       if (widget.reminders.lastError != null) {
         throw StateError('配置已保存，但${widget.reminders.lastError}');
       }
-          if (widget.reminders.warnings.isNotEmpty) {
+      if (widget.reminders.warnings.isNotEmpty) {
         throw StateError('配置已保存；${widget.reminders.warnings.join('；')}');
       }
       if (mounted) Navigator.pop(context);
@@ -250,11 +250,13 @@ class _SettingsPageState extends State<SettingsPage> {
                       'POST',
                       test: true,
                     );
-                    if (context.mounted)
+                    if (context.mounted) {
+                      final at = DateTime.parse(info['at'] as String).toLocal();
                       toast(
                         context,
-                        '后端测试已安排：${info['at']}。请返回桌面/锁屏，等待 ntfy 通知。',
+                        '后端测试已安排：${dayKey(at)} ${clockText(at)}。请返回桌面/锁屏，等待 ntfy 通知。',
                       );
+                    }
                   }),
                   child: const Text('1 分钟后发送后端测试通知'),
                 ),

@@ -7,19 +7,18 @@ Map<String, dynamic> remoteReminderPlan(
   String zone,
 ) {
   final enabled = data.settings['notifyRemote'] == 'true';
-  return {
-    'enabled': enabled,
-    'timeZone': zone,
-    'jobs': [
-      if (enabled)
-        for (final p in scheduleReminders(data, now, android: true))
-          {
-            'key': p.daily
-                ? 'daily:${clockText(p.at)}'
-                : '${p.channel}:${p.at.toUtc().millisecondsSinceEpoch}',
-            'at': p.at.toUtc().toIso8601String(),
-            'daily': p.daily ? clockText(p.at) : '',
-          },
-    ],
-  };
+  final jobs = <String, Map<String, dynamic>>{};
+  if (enabled) {
+    for (final p in scheduleReminders(data, now, android: true)) {
+      final key = p.daily
+          ? 'daily:${clockText(p.at)}'
+          : 'event:${p.at.toUtc().millisecondsSinceEpoch}';
+      jobs[key] = {
+        'key': key,
+        'at': p.at.toUtc().toIso8601String(),
+        'daily': p.daily ? clockText(p.at) : '',
+      };
+    }
+  }
+  return {'enabled': enabled, 'timeZone': zone, 'jobs': jobs.values.toList()};
 }

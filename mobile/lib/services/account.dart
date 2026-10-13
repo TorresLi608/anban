@@ -216,8 +216,9 @@ class Account {
       ),
     );
     request.headers.addAll(api.headers);
-    if (body != null)
+    if (body != null) {
       request.body = jsonEncode({...body, 'revision': api.revision});
+    }
     return api.check(
       await http.Response.fromStream(
         await request.send().timeout(const Duration(seconds: 30)),

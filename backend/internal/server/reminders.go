@@ -45,7 +45,8 @@ func validatePushPlan(p pushPlan, now time.Time) error {
 }
 
 func (c *Server) remoteReminders(w http.ResponseWriter, r *http.Request, user string) {
-	if c.ntfyPublicURL == "" || c.ntfyToken == "" {
+	configured := c.ntfyPublicURL != "" && c.ntfyToken != ""
+	if !configured && r.Method != "PUT" {
 		fail(w, 503, "后端尚未配置 ntfy 地址和发布凭据")
 		return
 	}
@@ -110,6 +111,10 @@ func (c *Server) remoteReminders(w http.ResponseWriter, r *http.Request, user st
 	}
 	if err := validatePushPlan(plan, time.Now()); err != nil {
 		fail(w, 400, err.Error())
+		return
+	}
+	if plan.Enabled && !configured {
+		fail(w, 503, "后端尚未配置 ntfy 发布凭据")
 		return
 	}
 	tx, err := c.db.BeginTx(r.Context(), nil)

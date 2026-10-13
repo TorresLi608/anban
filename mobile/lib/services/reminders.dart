@@ -186,7 +186,14 @@ class ReminderService extends ChangeNotifier {
         _checkedRestoredPermission = true;
         await requestPermission(exactAlarms: false);
       }
-      if (Account.current != null && (remoteEnabled || _remoteWasEnabled)) {
+      final remoteNeedsSync =
+          remoteEnabled ||
+          _remoteWasEnabled ||
+          data.settings.containsKey('notifyRemote');
+      if (remoteEnabled && Account.current == null) {
+        throw StateError('请先登录后再同步后端提醒');
+      }
+      if (Account.current != null && remoteNeedsSync) {
         await Account.reminderRequest(
           'PUT',
           body: remoteReminderPlan(data, DateTime.now(), timezone),
@@ -228,16 +235,18 @@ class ReminderService extends ChangeNotifier {
       }
       pendingCount = (await plugin.pendingNotificationRequests()).length;
       if (android != null) {
-        if (hasEnabledReminder && !exact) {
+        if (!remoteEnabled && hasEnabledReminder && !exact) {
           warnings.add('未允许“闹钟和提醒”，定时通知可能延迟；即时测试不需要此权限');
         }
-        if (await android.areNotificationsEnabled() == false) {
+        if (!remoteEnabled &&
+            await android.areNotificationsEnabled() == false) {
           warnings.add('系统通知权限已关闭');
         }
         for (final channel
             in await android.getNotificationChannels() ??
                 <AndroidNotificationChannel>[]) {
-          if (channel.id == reminderChannelId &&
+          if (!remoteEnabled &&
+              channel.id == reminderChannelId &&
               channel.importance == Importance.none) {
             warnings.add('安伴提醒通知渠道已关闭，请打开系统通知设置');
           }

@@ -11,11 +11,30 @@ import android.net.Uri
 import android.provider.Settings
 
 class MainActivity : FlutterActivity() {
+    private var reminderChannel: MethodChannel? = null
+    private var reminderLinkPending = false
+
+    private fun isReminderLink(intent: Intent?): Boolean =
+        intent?.action == Intent.ACTION_VIEW && intent.data?.scheme == "anban" && intent.data?.host == "reminders"
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (isReminderLink(intent)) {
+            reminderLinkPending = true
+            reminderChannel?.invokeMethod("reminderLink", null)
+        }
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "app.anban.anban/reminders")
-            .setMethodCallHandler { call, result ->
+        reminderLinkPending = reminderLinkPending || isReminderLink(intent)
+        reminderChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "app.anban.anban/reminders")
+        reminderChannel?.setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "consumeReminderLink" -> {
+                        result.success(reminderLinkPending)
+                        reminderLinkPending = false
+                    }
                     "getBackgroundStatus" -> {
                         val power = getSystemService(POWER_SERVICE) as PowerManager
                         val activity = getSystemService(ACTIVITY_SERVICE) as ActivityManager

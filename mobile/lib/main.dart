@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'data/store.dart';
@@ -14,6 +15,7 @@ import 'screens/records.dart';
 import 'screens/care.dart';
 import 'screens/profile.dart';
 import 'screens/medical.dart';
+import 'screens/settings.dart';
 import 'ui.dart';
 
 Future<void> main() async {
@@ -215,6 +217,8 @@ class CareShell extends StatefulWidget {
 }
 
 class _CareShellState extends State<CareShell> with WidgetsBindingObserver {
+  static const reminderLinks = MethodChannel('app.anban.anban/reminders');
+  bool openingReminderLink = false;
   int selected = 0;
   Timer? timer;
   static const names = ['首页', '健康记录', '行程', '医疗资料', '我的'];
@@ -230,6 +234,10 @@ class _CareShellState extends State<CareShell> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     widget.store.addListener(changed);
+    reminderLinks.setMethodCallHandler((call) async {
+      if (call.method == 'reminderLink') await consumeReminderLink();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => consumeReminderLink());
     changed();
     timer = Timer.periodic(const Duration(minutes: 1), (_) {
       if (mounted) {
@@ -243,9 +251,29 @@ class _CareShellState extends State<CareShell> with WidgetsBindingObserver {
     widget.reminders.refresh(widget.store.data);
   }
 
+  Future<void> consumeReminderLink() async {
+    try {
+      final pending = await reminderLinks.invokeMethod<bool>(
+        'consumeReminderLink',
+      );
+      if (pending != true || !mounted || openingReminderLink) return;
+      openingReminderLink = true;
+      try {
+        await openSettings(context, widget.store, widget.reminders);
+      } finally {
+        openingReminderLink = false;
+      }
+    } on MissingPluginException {
+      // The notification link is registered by the Android host only.
+    } on PlatformException {
+      // A host error must not prevent the care screen from opening.
+    }
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      consumeReminderLink();
       widget.reminders.refresh(widget.store.data);
       setState(() {});
     }
@@ -254,6 +282,7 @@ class _CareShellState extends State<CareShell> with WidgetsBindingObserver {
   @override
   void dispose() {
     timer?.cancel();
+    reminderLinks.setMethodCallHandler(null);
     widget.store.removeListener(changed);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();

@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"io"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -48,6 +50,62 @@ func TestValidationAndThrottle(t *testing.T) {
 	r = httptest.NewRequest("POST", "/", strings.NewReader(`{"version":1} {}`))
 	if decode(w, r, &e, 1024) {
 		t.Fatal("trailing JSON accepted")
+	}
+}
+
+func TestPushPlanValidation(t *testing.T) {
+	now := time.Date(2026, 10, 13, 1, 0, 0, 0, time.UTC)
+	valid := pushPlan{Enabled: true, TimeZone: "Asia/Shanghai", Jobs: []pushJob{{Key: "daily:09:00", At: time.Date(2026, 10, 13, 1, 0, 0, 0, time.UTC), Daily: "09:00"}}}
+	if err := validatePushPlan(valid, now); err != nil {
+		t.Fatal(err)
+	}
+	for name, mutate := range map[string]func(*pushPlan){
+		"unknown timezone":       func(p *pushPlan) { p.TimeZone = "Mars/Olympus" },
+		"care text in key":       func(p *pushPlan) { p.Jobs[0].Key = "患者姓名" },
+		"mismatched daily clock": func(p *pushPlan) { p.Jobs[0].Daily = "10:00" },
+		"duplicate key":          func(p *pushPlan) { p.Jobs = append(p.Jobs, p.Jobs[0]) },
+		"too far in future":      func(p *pushPlan) { p.Jobs[0].At = now.Add(16 * 24 * time.Hour) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			p := valid
+			p.Jobs = append([]pushJob(nil), valid.Jobs...)
+			mutate(&p)
+			if validatePushPlan(p, now) == nil {
+				t.Fatal("invalid plan accepted")
+			}
+		})
+	}
+}
+
+func TestPublishNtfyUsesGenericAuthenticatedNotification(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/anban-user" || r.Header.Get("Authorization") != "Bearer publish-secret" || r.Header.Get("Click") != "anban://reminders" {
+			t.Errorf("unexpected request: %s %s headers=%v", r.Method, r.URL.Path, r.Header)
+		}
+		b, _ := io.ReadAll(r.Body)
+		if string(b) != "有一项提醒到时间了，请打开安伴核对。" {
+			t.Errorf("unexpected body: %q", b)
+		}
+		w.WriteHeader(204)
+	}))
+	defer server.Close()
+	if err := publishNtfy(context.Background(), server.URL, "publish-secret", "anban-user", false); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestNextDailyUsesLocalCalendarAcrossDST(t *testing.T) {
+	zone := "America/New_York"
+	before, err := time.Parse(time.RFC3339, "2026-11-01T05:30:00Z")
+	if err != nil {
+		t.Fatal(err)
+	}
+	next, err := nextDaily(before, before, "09:00", zone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := next.In(time.FixedZone("expected", -5*60*60)).Format(time.RFC3339); got != "2026-11-02T09:00:00-05:00" {
+		t.Fatalf("unexpected next local time %s", got)
 	}
 }
 

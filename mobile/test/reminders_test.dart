@@ -248,6 +248,38 @@ void main() {
     expect(reminders.status, contains('通知权限未开启'));
   });
 
+  test(
+    'schedule failures preserve existing alarms until replacement succeeds',
+    () async {
+      await reminders.initialize();
+      final data = CareData(settings: {'notifyMeal': 'true'});
+      await reminders.refresh(data);
+      final previous = Map<int, Map<String, Object?>>.from(pending);
+      schedulingFails = true;
+      await reminders.refresh(
+        data.copy(settings: {'notifyMeal': 'true', 'mealCount': '3'}),
+      );
+      expect(pending, previous);
+      schedulingFails = false;
+      await reminders.refresh(
+        data.copy(settings: {'notifyMeal': 'true', 'mealCount': '3'}),
+      );
+      expect(pending, hasLength(3));
+    },
+  );
+
+  test(
+    'remote reminders require login before canceling local schedules',
+    () async {
+      await reminders.initialize();
+      await reminders.refresh(CareData(settings: {'notifyMeal': 'true'}));
+      final previous = Map<int, Map<String, Object?>>.from(pending);
+      await reminders.refresh(CareData(settings: {'notifyRemote': 'true'}));
+      expect(reminders.lastError, contains('请先登录'));
+      expect(pending, previous);
+    },
+  );
+
   test('system grant is recognized even when request returns null', () async {
     enabled = false;
     grantOnRequest = true;
