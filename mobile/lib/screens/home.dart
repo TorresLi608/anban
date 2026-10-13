@@ -46,12 +46,18 @@ class HomePage extends StatelessWidget {
                   onPressed: () => editRecord(context, store, kind),
                   icon: Icon(switch (kind) {
                     'weight' => Icons.monitor_weight_outlined,
+                    'temperature' => Icons.device_thermostat_outlined,
+                    'heartRate' => Icons.favorite_outline,
                     'stool' || 'urine' => Icons.water_drop_outlined,
                     'pain' => Icons.monitor_heart_outlined,
                     _ => Icons.edit_note,
                   }),
                   label: Text(
-                    kind == 'pain' ? '记一次疼痛' : '${kindNames[kind]}记录',
+                    kind == 'pain'
+                        ? '记一次疼痛'
+                        : kind == 'memory'
+                        ? '随便记一笔'
+                        : '${kindNames[kind]}记录',
                   ),
                 ),
               OutlinedButton.icon(
@@ -108,6 +114,34 @@ class HomePage extends StatelessWidget {
               waterTimes(settings).isEmpty
                   ? '设置开始、结束时间，默认每30分钟提醒一次'
                   : '${settings['waterStart']}–${settings['waterEnd']} · 每${settings['waterInterval'] ?? '30'}分钟\n${settings['notifyWater'] == 'true' ? '通知已开启' : '通知未开启'}',
+            ),
+          ),
+        ),
+        Section(
+          '下次提醒',
+          trailing: TextButton(
+            onPressed: () => openSettings(context, store, reminders),
+            child: const Text('提醒设置'),
+          ),
+          child: ListenableBuilder(
+            listenable: reminders,
+            builder: (_, _) => Surface(
+              child: Column(
+                children: [
+                  for (final entry in reminderNames.entries)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      title: Text(entry.value),
+                      trailing: Text(
+                        reminders.nextTimes[entry.key] == null
+                            ? '暂无排程'
+                            : '${dayKey(reminders.nextTimes[entry.key]!)} ${clockText(reminders.nextTimes[entry.key]!)}',
+                        style: const TextStyle(color: muted, fontSize: 12),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ),

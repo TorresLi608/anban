@@ -13,18 +13,38 @@ Future<Uint8List> medicalPdf(CareData data, {int days = 30}) async {
       data.records
           .where(
             (r) =>
-                ['pain', 'symptom', 'vital', 'dose'].contains(r.kind) &&
+                [
+                  'pain',
+                  'symptom',
+                  'temperature',
+                  'heartRate',
+                  'memory',
+                  'vital',
+                  'dose',
+                ].contains(r.kind) &&
                 !r.at.isBefore(start) &&
                 !r.at.isAfter(now),
           )
           .toList()
         ..sort((a, b) => a.at.compareTo(b.at));
-  const labels = {'pain': '疼痛', 'symptom': '症状', 'vital': '体征', 'dose': '服药'};
+  const labels = {
+    'pain': '疼痛',
+    'symptom': '症状',
+    'temperature': '体温',
+    'heartRate': '心率',
+    'memory': '随便记一笔',
+    'vital': '体征',
+    'dose': '服药',
+  };
   String detail(CareRecord r) => switch (r.kind) {
     'pain' =>
       '${r.text('score')} 分；${r.text('location')}；${r.text('type')}；${r.text('trigger')}；${r.text('relief')}；${r.text('note')}',
     'symptom' =>
       '${r.text('name')}（${r.text('severity')}）；${r.text('duration')}；${r.text('impact')}；${r.text('note')}',
+    'temperature' => '${r.text('temperature')}℃；${r.text('note')}',
+    'heartRate' => '${r.text('heartRate')} 次/分；${r.text('note')}',
+    'memory' =>
+      '${r.text('title', '随便记一笔')}；${r.text('note')}；附件 ${r.text('filename')}',
     'vital' =>
       '体温 ${r.text('temperature', '—')}℃；体重 ${r.text('weight', '—')}kg；进食 ${r.text('food')}；睡眠 ${r.text('sleep', '—')} 小时；排便 ${r.text('bowel')}；${r.text('note')}',
     _ =>

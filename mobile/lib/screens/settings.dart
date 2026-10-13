@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../data/models.dart';
@@ -196,34 +197,45 @@ class _SettingsPageState extends State<SettingsPage> {
       child: ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          Section(
-            '提醒方式',
-            child: RadioGroup<String>(
-              groupValue: reminderMode,
-              onChanged: saving
-                  ? (_) {}
-                  : (value) {
-                      if (value != null) setState(() => reminderMode = value);
-                    },
-              child: Column(
-                children: [
-                  RadioListTile<String>(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('仅推送'),
-                    subtitle: const Text('使用普通通知声音和震动，不占用闹钟音频'),
-                    value: reminderModeNotification,
-                    enabled: !saving,
-                  ),
-                  RadioListTile<String>(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('推送 + 闹钟'),
-                    subtitle: const Text('显示通知，并使用闹钟声音和震动提醒'),
-                    value: reminderModeAlarm,
-                    enabled: !saving,
-                  ),
-                ],
+          if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
+            const Section(
+              '提醒方式',
+              child: Note(
+                '所有提醒使用同一个“安伴提醒”通知渠道，声音和震动统一在系统通知设置中调整。准时提醒另外需要系统的“闹钟和提醒”权限。',
+              ),
+            )
+          else
+            Section(
+              '提醒方式',
+              child: RadioGroup<String>(
+                groupValue: reminderMode,
+                onChanged: saving
+                    ? (_) {}
+                    : (value) {
+                        if (value != null) setState(() => reminderMode = value);
+                      },
+                child: Column(
+                  children: [
+                    RadioListTile<String>(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('仅推送'),
+                      subtitle: const Text('使用普通通知声音和震动，不占用闹钟音频'),
+                      value: reminderModeNotification,
+                      enabled: !saving,
+                    ),
+                    RadioListTile<String>(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('推送 + 闹钟'),
+                      subtitle: const Text('显示通知，并使用闹钟声音和震动提醒'),
+                      value: reminderModeAlarm,
+                      enabled: !saving,
+                    ),
+                  ],
+                ),
               ),
             ),
+          const Note(
+            'Android 只需允许一次“安伴”通知权限。下面的开关分别控制用餐、喝水和各项护理提醒；关闭某项不会影响其他提醒。',
           ),
           Section(
             '用餐提醒',
@@ -278,6 +290,23 @@ class _SettingsPageState extends State<SettingsPage> {
           const Note(
             '安卓用餐和喝水提醒每天循环；同一时刻会合并成一条提示。iOS 保留最多60条待提醒，按类型分配并在打开应用时续排。通知仍受系统权限、省电设置和厂商后台限制影响；系统设置中的“强制停止”会清除 Android 闹钟，无法由应用恢复。',
           ),
+          if (widget.reminders.supported)
+            OutlinedButton.icon(
+              onPressed: saving
+                  ? null
+                  : () => attempt(context, () async {
+                      final at = await widget.reminders
+                          .testScheduledNotification(mode: reminderMode);
+                      if (context.mounted) {
+                        toast(
+                          context,
+                          '定时测试已安排在 ${clockText(at)}。请返回桌面或锁屏等待；未允许精确闹钟时可能延迟。',
+                        );
+                      }
+                    }),
+              icon: const Icon(Icons.timer_outlined),
+              label: const Text('1 分钟后测试提醒'),
+            ),
           if (widget.reminders.supported)
             TextButton(
               onPressed: () =>

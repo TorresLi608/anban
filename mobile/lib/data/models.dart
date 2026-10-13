@@ -9,6 +9,8 @@ String clockText(DateTime date) =>
     '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
 const recordKinds = [
   'weight',
+  'temperature',
+  'heartRate',
   'stool',
   'urine',
   'journey',
@@ -149,6 +151,21 @@ class CareRecord {
             temperature > 45) {
           throw const FormatException('请核对体温');
         }
+      }
+    }
+    if (kind == 'temperature') {
+      final temperature = double.tryParse(text('temperature'));
+      if (temperature == null ||
+          !temperature.isFinite ||
+          temperature < 30 ||
+          temperature > 45) {
+        throw const FormatException('请填写有效体温（30–45℃）');
+      }
+    }
+    if (kind == 'heartRate') {
+      final heartRate = int.tryParse(text('heartRate'));
+      if (heartRate == null || heartRate < 20 || heartRate > 250) {
+        throw const FormatException('请填写有效心率（20–250 次/分）');
       }
     }
     if (['stool', 'urine'].contains(kind) &&

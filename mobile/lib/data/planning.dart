@@ -1,6 +1,15 @@
 import 'models.dart';
 
-const healthKinds = ['weight', 'stool', 'urine', 'pain', 'symptom'];
+const healthKinds = [
+  'weight',
+  'temperature',
+  'heartRate',
+  'stool',
+  'urine',
+  'pain',
+  'symptom',
+  'memory',
+];
 const journeyCategories = {'picc': 'PICC护理', 'port': '输液港护理', 'chemo': '化疗'};
 const defaultHealthOptions = <String, List<String>>{
   'stoolStatus': ['正常', '未排便', '黑便', '血便', '便秘', '腹泻'],

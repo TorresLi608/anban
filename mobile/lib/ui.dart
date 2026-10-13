@@ -284,6 +284,9 @@ class RecordActions extends StatelessWidget {
 String recordTitle(CareRecord r) => switch (r.kind) {
   'pain' => '疼痛 ${r.text('score')} 分 · ${r.text('location')}',
   'symptom' => '${r.text('name')} · ${r.text('severity')}度',
+  'temperature' => '体温 ${r.text('temperature')} ℃',
+  'heartRate' => '心率 ${r.text('heartRate')} 次/分',
+  'memory' => r.text('title', '随便记一笔'),
   'vital' =>
     '体温 ${r.text('temperature', '—')} ℃ · 体重 ${r.text('weight', '—')} kg',
   'medication' => r.text('name'),
@@ -303,6 +306,12 @@ String recordSummary(CareRecord r) => switch (r.kind) {
     r.text('duration'),
     r.text('impact'),
     r.text('note'),
+  ].where((s) => s.isNotEmpty).join(' · '),
+  'temperature' => r.text('note'),
+  'heartRate' => r.text('note'),
+  'memory' => [
+    r.text('note'),
+    r.text('filename'),
   ].where((s) => s.isNotEmpty).join(' · '),
   'vital' =>
     '进食：${r.text('food', '未填')} · 睡眠 ${r.text('sleep', '—')} 小时 · 排便：${r.text('bowel', '未填')}',

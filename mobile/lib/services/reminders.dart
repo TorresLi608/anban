@@ -11,6 +11,20 @@ import '../data/planning.dart';
 
 const reminderModeNotification = 'notification';
 const reminderModeAlarm = 'alarm';
+const reminderChannelId = 'anban_reminders';
+
+const _legacyReminderChannelIds = {
+  'meal_alarm',
+  'meal_notificationSound',
+  'water_alarm',
+  'water_notificationSound',
+  'picc_alarm',
+  'picc_notificationSound',
+  'port_alarm',
+  'port_notificationSound',
+  'chemo_alarm',
+  'chemo_notificationSound',
+};
 
 String normalizedReminderMode(String? value) =>
     value == reminderModeNotification
@@ -27,6 +41,8 @@ class ReminderService extends ChangeNotifier {
   DateTime? _refillAt;
   Map<String, DateTime> nextTimes = {};
   final List<String> warnings = [];
+  int pendingCount = 0;
+  bool _checkedRestoredPermission = false;
   bool get supported =>
       !kIsWeb &&
       [
@@ -102,13 +118,23 @@ class ReminderService extends ChangeNotifier {
         false;
   }
 
-  Future<void> refresh(CareData data, {bool force = false}) {
-    final result = _pending.then((_) => _refresh(data, force: force));
+  Future<void> refresh(
+    CareData data, {
+    bool force = false,
+    bool clearTest = false,
+  }) {
+    final result = _pending.then(
+      (_) => _refresh(data, force: force || clearTest, clearTest: clearTest),
+    );
     _pending = result.catchError((Object _) {});
     return result;
   }
 
-  Future<void> _refresh(CareData data, {required bool force}) async {
+  Future<void> _refresh(
+    CareData data, {
+    required bool force,
+    required bool clearTest,
+  }) async {
     if (!initialized) {
       return;
     }
@@ -123,12 +149,16 @@ class ReminderService extends ChangeNotifier {
     if (!force &&
         fingerprint == _fingerprint &&
         (_refillAt == null || DateTime.now().isBefore(_refillAt!))) {
+      nextTimes = {};
+      for (final p in planReminders(data, DateTime.now())) {
+        nextTimes.putIfAbsent(p.channel, () => p.at);
+      }
+      notifyListeners();
       return;
     }
     try {
       lastError = null;
       warnings.clear();
-      await plugin.cancelAllPendingNotifications();
       tz.setLocalLocation(
         tz.getLocation((await FlutterTimezone.getLocalTimezone()).identifier),
       );
@@ -136,6 +166,13 @@ class ReminderService extends ChangeNotifier {
           .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin
           >();
+      final hasEnabledReminder = data.settings.entries.any(
+        (entry) => entry.key.startsWith('notify') && entry.value == 'true',
+      );
+      if (hasEnabledReminder && !_checkedRestoredPermission) {
+        _checkedRestoredPermission = true;
+        await requestPermission(exactAlarms: false);
+      }
       final exact =
           android == null ||
           (await android.canScheduleExactNotifications() ?? false);
@@ -144,6 +181,11 @@ class ReminderService extends ChangeNotifier {
         DateTime.now(),
         android: android != null,
       );
+      // A foreground refresh must not cancel the delayed background test.
+      for (final pending in await plugin.pendingNotificationRequests()) {
+        if (!clearTest && pending.id == 900100) continue;
+        await plugin.cancel(id: pending.id);
+      }
       final mode = normalizedReminderMode(data.settings['reminderMode']);
       nextTimes = {};
       final lastTimes = <String, DateTime>{};
@@ -166,20 +208,23 @@ class ReminderService extends ChangeNotifier {
           lastTimes[category] = p.at;
         }
       }
+      pendingCount = (await plugin.pendingNotificationRequests()).length;
       if (android != null) {
+        if (hasEnabledReminder && !exact) {
+          warnings.add('未允许“闹钟和提醒”，定时通知可能延迟；即时测试不需要此权限');
+        }
         if (await android.areNotificationsEnabled() == false) {
           warnings.add('系统通知权限已关闭');
         }
         for (final channel
             in await android.getNotificationChannels() ??
                 <AndroidNotificationChannel>[]) {
-          final category = channel.id.replaceFirst(
-            RegExp(r'_(notificationSound|alarm)$'),
-            '',
-          );
-          if (nextTimes.containsKey(category) &&
+          if (channel.id == reminderChannelId &&
               channel.importance == Importance.none) {
-            warnings.add('${reminderNames[category]}通知渠道已关闭，请打开系统通知设置');
+            warnings.add('安伴提醒通知渠道已关闭，请打开系统通知设置');
+          }
+          if (_legacyReminderChannelIds.contains(channel.id)) {
+            await android.deleteNotificationChannel(channelId: channel.id);
           }
         }
       }
@@ -195,10 +240,10 @@ class ReminderService extends ChangeNotifier {
       _fingerprint = fingerprint;
       status = scheduled.isEmpty
           ? '暂无待提醒事项，请检查各项通知开关与行程时间'
-          : '${android != null ? '用餐与喝水按每天定时循环' : '已为各类提醒保留排程名额，打开应用自动续排'}${exact ? '' : ' · 未授权精确闹钟，可能延迟'}\n${nextTimes.entries.map((e) => '${reminderNames[e.key]}下次：${dayKey(e.value)} ${clockText(e.value)}').join('\n')}${warnings.isEmpty ? '' : '\n${warnings.join('\n')}'}';
-    } catch (_) {
+          : '${android != null ? '用餐与喝水按每天定时循环' : '已为各类提醒保留排程名额，打开应用自动续排'}${exact ? '' : ' · 未授权精确闹钟，可能延迟'}\n插件保存的待提醒：$pendingCount 条（不代表已送达）${warnings.isEmpty ? '' : '\n${warnings.join('\n')}'}';
+    } catch (e) {
       _fingerprint = '';
-      lastError = '提醒安排失败，请检查通知与闹钟权限后重试';
+      lastError = '提醒安排失败：$e';
       status = lastError!;
     }
     notifyListeners();
@@ -208,28 +253,57 @@ class ReminderService extends ChangeNotifier {
     String channel, {
     String mode = reminderModeAlarm,
   }) {
-    final alarm = normalizedReminderMode(mode) == reminderModeAlarm;
-    final channelId =
-        '${channel}_${alarm ? reminderModeAlarm : 'notificationSound'}';
     return NotificationDetails(
       android: AndroidNotificationDetails(
-        channelId,
-        '${reminderNames[channel] ?? channel}${alarm ? '闹钟' : '通知'}',
-        channelDescription: alarm ? '安伴照护闹钟提醒' : '安伴照护通知提醒',
+        reminderChannelId,
+        '安伴提醒',
+        channelDescription: '安伴的用餐、喝水和行程提醒',
         importance: Importance.high,
         priority: Priority.high,
         visibility: NotificationVisibility.private,
         playSound: true,
         enableVibration: true,
-        audioAttributesUsage: alarm
-            ? AudioAttributesUsage.alarm
-            : AudioAttributesUsage.notification,
+        audioAttributesUsage: AudioAttributesUsage.notification,
       ),
       iOS: const DarwinNotificationDetails(
         presentAlert: true,
         presentSound: true,
       ),
     );
+  }
+
+  Future<DateTime> testScheduledNotification({
+    String mode = reminderModeAlarm,
+  }) {
+    final result = _pending.then((_) => _testScheduledNotification(mode: mode));
+    _pending = result.then<void>((_) {}).catchError((Object _) {});
+    return result;
+  }
+
+  Future<DateTime> _testScheduledNotification({required String mode}) async {
+    if (!await requestPermission()) {
+      throw StateError('请先允许系统通知权限');
+    }
+    final android = plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    final exact =
+        android == null ||
+        await android.canScheduleExactNotifications() == true;
+    final at = DateTime.now().add(const Duration(minutes: 1));
+    await plugin.zonedSchedule(
+      id: 900100,
+      title: '安伴定时提醒测试',
+      body: '收到此通知说明系统定时触发正常。',
+      scheduledDate: tz.TZDateTime.from(at, tz.local),
+      notificationDetails: details('meal', mode: mode),
+      androidScheduleMode: exact
+          ? AndroidScheduleMode.exactAllowWhileIdle
+          : AndroidScheduleMode.inexactAllowWhileIdle,
+      payload: 'scheduled-test',
+    );
+    return at;
   }
 
   Future<void> testNotification(

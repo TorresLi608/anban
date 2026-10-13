@@ -43,6 +43,22 @@ void main() {
           CareRecord(kind: 'vital', fields: {'temperature': 'NaN'}).validate(),
       throwsFormatException,
     );
+    CareRecord(kind: 'temperature', fields: {'temperature': '36.7'}).validate();
+    CareRecord(kind: 'heartRate', fields: {'heartRate': '72'}).validate();
+    expect(
+      () => CareRecord(
+        kind: 'temperature',
+        fields: {'temperature': '46'},
+      ).validate(),
+      throwsFormatException,
+    );
+    expect(
+      () => CareRecord(
+        kind: 'heartRate',
+        fields: {'heartRate': '300'},
+      ).validate(),
+      throwsFormatException,
+    );
   });
   test(
     'encrypted persistence, concurrent duplicate prevention and atomic restore',
@@ -202,11 +218,21 @@ void main() {
       await tester.tap(find.text('保存记录'));
       await tester.pumpAndSettle();
       expect(store.records('pain'), hasLength(1));
+      await tester.tap(find.text('随便记一笔'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('保存记录'));
+      await tester.pumpAndSettle();
+      expect(store.records('memory'), hasLength(1));
       for (final name in ['健康记录', '行程', '医疗资料', '我的']) {
         await tester.tap(find.text(name).last);
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull, reason: '$name at $width');
       }
+      expect(find.text('导出加密备份'), findsOneWidget);
+      expect(find.text('从加密备份恢复'), findsOneWidget);
+      expect(find.text('退出登录'), findsOneWidget);
+      expect(find.text('刷新云端资料'), findsNothing);
+      expect(find.text('清空云端资料'), findsNothing);
       await tester.runAsync(
         () => store.settings({'largeText': 'true', 'dark': 'true'}),
       );

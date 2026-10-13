@@ -1,8 +1,10 @@
 import 'dart:convert';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../data/attachments.dart';
 import '../data/models.dart';
 import '../data/store.dart';
 import '../data/planning.dart';
@@ -103,9 +105,20 @@ const specifications = <String, List<FieldSpec>>{
   ],
   'weight': [
     FieldSpec('weight', '体重（kg）*', type: 'number', required: true),
-    FieldSpec('temperature', '体温（℃）', type: 'number'),
     FieldSpec('food', '进食情况'),
     FieldSpec('note', '补充说明', type: 'multiline'),
+  ],
+  'temperature': [
+    FieldSpec('temperature', '体温（℃）*', type: 'number', required: true),
+    FieldSpec('note', '补充说明', type: 'multiline'),
+  ],
+  'heartRate': [
+    FieldSpec('heartRate', '心率（次/分）*', type: 'number', required: true),
+    FieldSpec('note', '补充说明', type: 'multiline'),
+  ],
+  'memory': [
+    FieldSpec('title', '标题', initial: '随便记一笔'),
+    FieldSpec('note', '想记录的内容', type: 'multiline'),
   ],
   'stool': [
     FieldSpec('status', '排便情况 *', type: 'multi', required: true),
@@ -140,6 +153,9 @@ const kindNames = {
   'visit': '看诊记录',
   'instruction': '医嘱',
   'weight': '体重',
+  'temperature': '体温',
+  'heartRate': '心率',
+  'memory': '随便记一笔',
   'stool': '大便',
   'urine': '小便',
   'pain': '疼痛',
@@ -190,6 +206,9 @@ class _RecordFormState extends State<RecordForm> {
   bool saving = false;
   String? error;
   List<Map<String, String>> photos = [];
+  String attachment = '';
+  String attachmentName = '';
+  String attachmentExtension = '';
   bool get supportsPhotos => [
     'weight',
     'stool',
@@ -202,6 +221,12 @@ class _RecordFormState extends State<RecordForm> {
     super.initState();
     at = widget.record?.at ?? DateTime.now();
     photos = widget.record == null ? [] : photosOf(widget.record!);
+    attachment =
+        widget.record?.text('attachment') ?? widget.initial['attachment'] ?? '';
+    attachmentName =
+        widget.record?.text('filename') ?? widget.initial['filename'] ?? '';
+    attachmentExtension =
+        widget.record?.text('extension') ?? widget.initial['extension'] ?? '';
     score = widget.record?.number('score') ?? 3;
     for (final spec in specifications[widget.kind]!) {
       controllers[spec.key] = TextEditingController(
@@ -237,6 +262,11 @@ class _RecordFormState extends State<RecordForm> {
           ...controllers.map((k, v) => MapEntry(k, v.text.trim())),
           if (widget.kind == 'pain') 'score': score.round().toString(),
           if (supportsPhotos) 'photos': jsonEncode(photos),
+          if (widget.kind == 'memory') ...{
+            'attachment': attachment,
+            'filename': attachmentName,
+            'extension': attachmentExtension,
+          },
         },
       );
       await widget.store.put(record);
@@ -253,6 +283,45 @@ class _RecordFormState extends State<RecordForm> {
     if (mounted) {
       setState(() => saving = false);
     }
+  }
+
+  Future<void> pickMemoryAttachment() async {
+    if (saving) return;
+    await attempt(context, () async {
+      final file = await FilePicker.pickFile(
+        type: FileType.custom,
+        allowedExtensions: [
+          'jpg',
+          'jpeg',
+          'png',
+          'webp',
+          'gif',
+          'heic',
+          'heif',
+          'mp4',
+          'mov',
+          'm4v',
+          'webm',
+          'mkv',
+          'avi',
+        ],
+      );
+      if (file == null) return;
+      final size = await file.length() ?? 0;
+      if (size == 0) throw const FormatException('不能上传空文件');
+      if (size > maxAttachmentBytes) {
+        throw const FormatException('图片或视频不能超过 200 MB');
+      }
+      final id = await widget.store.vault.addAttachmentStream(
+        file.readAsByteStream(),
+      );
+      if (!mounted) return;
+      setState(() {
+        attachment = id;
+        attachmentName = file.name;
+        attachmentExtension = file.name.split('.').last.toLowerCase();
+      });
+    });
   }
 
   Future<void> pickAt() async {
@@ -391,6 +460,36 @@ class _RecordFormState extends State<RecordForm> {
                         padding: const EdgeInsets.only(bottom: 22),
                         child: field(spec),
                       ),
+                    if (widget.kind == 'memory') ...[
+                      const Text('图片或视频（可选）'),
+                      const SizedBox(height: 8),
+                      if (attachment.isEmpty)
+                        OutlinedButton.icon(
+                          onPressed: saving ? null : pickMemoryAttachment,
+                          icon: const Icon(Icons.perm_media_outlined),
+                          label: const Text('上传图片或视频'),
+                        )
+                      else
+                        Row(
+                          children: [
+                            const Icon(Icons.attach_file, color: pine),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(attachmentName)),
+                            IconButton(
+                              onPressed: saving
+                                  ? null
+                                  : () => setState(() {
+                                      attachment = '';
+                                      attachmentName = '';
+                                      attachmentExtension = '';
+                                    }),
+                              tooltip: '移除附件',
+                              icon: const Icon(Icons.close),
+                            ),
+                          ],
+                        ),
+                      const SizedBox(height: 16),
+                    ],
                     if (supportsPhotos) ...[
                       Text('图片（${photos.length}/9）'),
                       Wrap(

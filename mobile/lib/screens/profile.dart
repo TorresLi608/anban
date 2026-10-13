@@ -360,31 +360,6 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-  Future<void> migrate(bool offline) async {
-    final old = await LocalVault.open(scope: offline ? '' : Account.scope);
-    try {
-      final oldData = await old.load();
-      if (oldData.records.isEmpty && oldData.profile.isEmpty) {
-        if (mounted) toast(context, '没有发现旧版本机资料');
-        return;
-      }
-      if (!mounted ||
-          !await confirm(
-            context,
-            '迁移旧版资料到当前账号？',
-            '将上传 ${oldData.records.length} 条记录及其附件，并替换当前账号云端资料。上传成功后清除这份旧版本机资料；失败时原资料保留。',
-            action: '上传并迁移',
-          )) {
-        return;
-      }
-      await widget.store.restore(await old.backup(oldData));
-      await old.clear();
-      if (mounted) toast(context, '已上传云端并清除旧版本机资料');
-    } finally {
-      await old.close();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     if (widget.loginOnly) {
@@ -481,44 +456,6 @@ class _ProfilePageState extends State<ProfilePage> {
                 () => run(restore),
               ),
               option(
-                Icons.refresh,
-                '刷新云端资料',
-                '读取当前账号最新数据',
-                () => run(() => Account.refresh(widget.store)),
-              ),
-              option(
-                Icons.move_up,
-                '迁移旧版本机资料',
-                '上传成功后清除对应本机资料',
-                () => run(() => migrate(false)),
-              ),
-              option(
-                Icons.move_up,
-                '迁移旧版离线资料',
-                '上传到当前账号并替换云端快照',
-                () => run(() => migrate(true)),
-              ),
-              option(
-                Icons.delete_outline,
-                '清空云端资料',
-                '清空当前账号记录与附件引用',
-                () => run(() async {
-                  if (!await confirm(
-                    context,
-                    '清空云端资料？',
-                    '所有记录和行程将被清空，请先导出备份。',
-                    action: '清空',
-                  )) {
-                    return;
-                  }
-                  await widget.store.clear();
-                  await widget.reminders.refresh(
-                    widget.store.data,
-                    force: true,
-                  );
-                }),
-              ),
-              option(
                 Icons.logout,
                 '退出登录',
                 Account.current?['username'] ?? '',
@@ -527,6 +464,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   await widget.reminders.refresh(
                     widget.store.data,
                     force: true,
+                    clearTest: true,
                   );
                 }),
               ),

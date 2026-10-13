@@ -7,6 +7,7 @@ import '../data/planning.dart';
 import '../data/store.dart';
 import '../ui.dart';
 import 'forms.dart';
+import 'media.dart';
 
 class RecordsPage extends StatefulWidget {
   final CareStore store;
@@ -70,20 +71,25 @@ class _RecordsPageState extends State<RecordsPage> {
                         contentPadding: const EdgeInsets.symmetric(vertical: 8),
                         title: Text(switch (r.kind) {
                           'weight' => '${r.text('weight')} kg',
+                          'temperature' => '${r.text('temperature')} ℃',
+                          'heartRate' => '${r.text('heartRate')} 次/分',
+                          'memory' => r.text('title', '随便记一笔'),
                           'stool' ||
                           'urine' => selectedValues(r.text('status')).join('、'),
                           'pain' => '疼痛 ${r.text('score')} / 10',
                           _ => '${r.text('name')} · ${r.text('severity')}',
                         }),
                         subtitle: Text(
-                          '${dayKey(r.at)} ${clockText(r.at)}\n${r.text('note')}${photosOf(r).isEmpty ? '' : '\n${photosOf(r).length} 张图片'}',
+                          '${dayKey(r.at)} ${clockText(r.at)}\n${r.text('note')}${r.text('attachment').isEmpty ? '' : '\n${r.text('filename', '1 个附件')}'}${photosOf(r).isEmpty ? '' : '\n${photosOf(r).length} 张图片'}',
                         ),
-                        onTap: () => editRecord(
-                          context,
-                          widget.store,
-                          r.kind,
-                          record: r,
-                        ),
+                        onTap: () => r.text('attachment').isNotEmpty
+                            ? previewMedia(context, widget.store, r)
+                            : editRecord(
+                                context,
+                                widget.store,
+                                r.kind,
+                                record: r,
+                              ),
                         trailing: RecordActions(
                           edit: () => editRecord(
                             context,
