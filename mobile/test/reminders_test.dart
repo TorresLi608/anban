@@ -61,6 +61,22 @@ void main() {
     reminders.dispose();
   });
 
+  test('reminder modes use separate notification channel behavior', () {
+    final push = reminders.details(
+      'meal',
+      mode: reminderModeNotification,
+    ).android!;
+    final alarm = reminders.details('meal', mode: reminderModeAlarm).android!;
+    expect(push.channelId, 'meal_notificationSound');
+    expect(push.playSound, isTrue);
+    expect(push.enableVibration, isTrue);
+    expect(push.audioAttributesUsage, AudioAttributesUsage.notification);
+    expect(alarm.channelId, 'meal_alarm');
+    expect(alarm.playSound, isTrue);
+    expect(alarm.enableVibration, isTrue);
+    expect(alarm.audioAttributesUsage, AudioAttributesUsage.alarm);
+  });
+
   test('enabled Android notifications can be tested without requesting alarm access', () async {
     await reminders.initialize();
     await reminders.testNotification('meal');

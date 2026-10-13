@@ -65,6 +65,14 @@ class AppUpdate {
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
   static bool _checking = false;
 
+  static Future<String?> installedVersionName() async {
+    if (!supported) return null;
+    final installed = await const MethodChannel('app.anban.anban/version')
+        .invokeMapMethod<String, dynamic>('getVersion');
+    final name = installed?['versionName'];
+    return name is String && name.isNotEmpty ? name : null;
+  }
+
   static Future<void> check(
     BuildContext context, {
     bool automatic = false,

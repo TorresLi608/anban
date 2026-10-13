@@ -9,6 +9,14 @@ import 'package:timezone/timezone.dart' as tz;
 import '../data/models.dart';
 import '../data/planning.dart';
 
+const reminderModeNotification = 'notification';
+const reminderModeAlarm = 'alarm';
+
+String normalizedReminderMode(String? value) =>
+    value == reminderModeNotification
+    ? reminderModeNotification
+    : reminderModeAlarm;
+
 class ReminderService extends ChangeNotifier {
   final plugin = FlutterLocalNotificationsPlugin();
   String status = '尚未启用提醒';
@@ -136,6 +144,7 @@ class ReminderService extends ChangeNotifier {
         DateTime.now(),
         android: android != null,
       );
+      final mode = normalizedReminderMode(data.settings['reminderMode']);
       nextTimes = {};
       final lastTimes = <String, DateTime>{};
       for (var i = 0; i < scheduled.length; i++) {
@@ -145,7 +154,7 @@ class ReminderService extends ChangeNotifier {
           title: p.title,
           body: p.body,
           scheduledDate: tz.TZDateTime.from(p.at, tz.local),
-          notificationDetails: details(p.channel),
+          notificationDetails: details(p.channel, mode: mode),
           matchDateTimeComponents: p.daily ? DateTimeComponents.time : null,
           androidScheduleMode: exact
               ? AndroidScheduleMode.exactAllowWhileIdle
@@ -164,9 +173,13 @@ class ReminderService extends ChangeNotifier {
         for (final channel
             in await android.getNotificationChannels() ??
                 <AndroidNotificationChannel>[]) {
-          if (nextTimes.containsKey(channel.id) &&
+          final category = channel.id.replaceFirst(
+            RegExp(r'_(notificationSound|alarm)$'),
+            '',
+          );
+          if (nextTimes.containsKey(category) &&
               channel.importance == Importance.none) {
-            warnings.add('${reminderNames[channel.id]}通知渠道已关闭，请打开系统通知设置');
+            warnings.add('${reminderNames[category]}通知渠道已关闭，请打开系统通知设置');
           }
         }
       }
@@ -191,22 +204,38 @@ class ReminderService extends ChangeNotifier {
     notifyListeners();
   }
 
-  NotificationDetails details(String channel) => NotificationDetails(
-    android: AndroidNotificationDetails(
-      channel,
-      '${reminderNames[channel] ?? channel}提醒',
-      channelDescription: '安伴照护提醒',
-      importance: Importance.high,
-      priority: Priority.high,
-      visibility: NotificationVisibility.private,
-    ),
-    iOS: const DarwinNotificationDetails(
-      presentAlert: true,
-      presentSound: true,
-    ),
-  );
+  NotificationDetails details(
+    String channel, {
+    String mode = reminderModeAlarm,
+  }) {
+    final alarm = normalizedReminderMode(mode) == reminderModeAlarm;
+    final channelId =
+        '${channel}_${alarm ? reminderModeAlarm : 'notificationSound'}';
+    return NotificationDetails(
+      android: AndroidNotificationDetails(
+        channelId,
+        '${reminderNames[channel] ?? channel}${alarm ? '闹钟' : '通知'}',
+        channelDescription: alarm ? '安伴照护闹钟提醒' : '安伴照护通知提醒',
+        importance: Importance.high,
+        priority: Priority.high,
+        visibility: NotificationVisibility.private,
+        playSound: true,
+        enableVibration: true,
+        audioAttributesUsage: alarm
+            ? AudioAttributesUsage.alarm
+            : AudioAttributesUsage.notification,
+      ),
+      iOS: const DarwinNotificationDetails(
+        presentAlert: true,
+        presentSound: true,
+      ),
+    );
+  }
 
-  Future<void> testNotification(String channel) async {
+  Future<void> testNotification(
+    String channel, {
+    String mode = reminderModeAlarm,
+  }) async {
     if (!await requestPermission(exactAlarms: false)) {
       throw StateError('请先允许系统通知权限');
     }
@@ -214,7 +243,7 @@ class ReminderService extends ChangeNotifier {
       id: 900001 + reminderNames.keys.toList().indexOf(channel),
       title: '${reminderNames[channel]}提醒测试',
       body: '这是一条测试通知，用于确认声音和提示是否正常。',
-      notificationDetails: details(channel),
+      notificationDetails: details(channel, mode: mode),
     );
   }
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../data/models.dart';
 import '../data/planning.dart';
 import '../data/store.dart';
 import '../services/reminders.dart';
@@ -28,12 +29,14 @@ class _SettingsPageState extends State<SettingsPage> {
   final key = GlobalKey<FormState>();
   late Map<String, TextEditingController> inputs;
   late Map<String, bool> switches;
+  late String reminderMode;
   bool saving = false;
   String? error;
   @override
   void initState() {
     super.initState();
     final s = widget.store.data.settings;
+    reminderMode = normalizedReminderMode(s['reminderMode']);
     final defaults = {
       'mealStart': '07:30',
       'mealEnd': '18:30',
@@ -79,6 +82,7 @@ class _SettingsPageState extends State<SettingsPage> {
       final values = {
         for (final e in inputs.entries) e.key: e.value.text.trim(),
         for (final e in switches.entries) e.key: '${e.value}',
+        'reminderMode': reminderMode,
       };
       mealTimes(values);
       if (values['waterStart']!.isNotEmpty ||
@@ -150,6 +154,40 @@ class _SettingsPageState extends State<SettingsPage> {
     value: switches[name]!,
     onChanged: saving ? null : (v) => setState(() => switches[name] = v),
   );
+
+  Widget testButton(String channel) => TextButton(
+    onPressed: saving
+        ? null
+        : () => attempt(
+            context,
+            () =>
+                widget.reminders.testNotification(channel, mode: reminderMode),
+          ),
+    child: const Text('测试通知'),
+  );
+
+  Widget nextReminderTimes() => ListenableBuilder(
+    listenable: widget.reminders,
+    builder: (_, _) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final entry in reminderNames.entries)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Builder(
+              builder: (_) {
+                final time = widget.reminders.nextTimes[entry.key];
+                return Text(
+                  time == null
+                      ? '${entry.value}：暂无排程（请开启通知并填写有效时间）'
+                      : '${entry.value}：${dayKey(time)} ${clockText(time)}',
+                );
+              },
+            ),
+          ),
+      ],
+    ),
+  );
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('提醒设置')),
@@ -159,18 +197,37 @@ class _SettingsPageState extends State<SettingsPage> {
         padding: const EdgeInsets.all(24),
         children: [
           Section(
+            '提醒方式',
+            child: RadioGroup<String>(
+              groupValue: reminderMode,
+              onChanged: saving
+                  ? (_) {}
+                  : (value) {
+                      if (value != null) setState(() => reminderMode = value);
+                    },
+              child: Column(
+                children: [
+                  RadioListTile<String>(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('仅推送'),
+                    subtitle: const Text('使用普通通知声音和震动，不占用闹钟音频'),
+                    value: reminderModeNotification,
+                    enabled: !saving,
+                  ),
+                  RadioListTile<String>(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('推送 + 闹钟'),
+                    subtitle: const Text('显示通知，并使用闹钟声音和震动提醒'),
+                    value: reminderModeAlarm,
+                    enabled: !saving,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Section(
             '用餐提醒',
-            trailing: widget.reminders.supported
-                ? TextButton(
-                    onPressed: saving
-                        ? null
-                        : () => attempt(
-                            context,
-                            () => widget.reminders.testNotification('meal'),
-                          ),
-                    child: const Text('测试通知'),
-                  )
-                : null,
+            trailing: widget.reminders.supported ? testButton('meal') : null,
             child: Column(
               children: [
                 toggle('notifyMeal', '用餐通知'),
@@ -184,17 +241,7 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           Section(
             '喝水提醒',
-            trailing: widget.reminders.supported
-                ? TextButton(
-                    onPressed: saving
-                        ? null
-                        : () => attempt(
-                            context,
-                            () => widget.reminders.testNotification('water'),
-                          ),
-                    child: const Text('测试通知'),
-                  )
-                : null,
+            trailing: widget.reminders.supported ? testButton('water') : null,
             child: Column(
               children: [
                 toggle('notifyWater', '喝水通知'),
@@ -208,6 +255,9 @@ class _SettingsPageState extends State<SettingsPage> {
           for (final category in journeyCategories.entries)
             Section(
               category.value,
+              trailing: widget.reminders.supported
+                  ? testButton(category.key)
+                  : null,
               child: Column(
                 children: [
                   toggle('notify_${category.key}', '${category.value}通知'),
@@ -219,13 +269,14 @@ class _SettingsPageState extends State<SettingsPage> {
                 ],
               ),
             ),
+          Section('各类下一次通知', child: nextReminderTimes()),
           ListenableBuilder(
             listenable: widget.reminders,
             builder: (_, _) => Note(widget.reminders.status),
           ),
           const SizedBox(height: 16),
           const Note(
-            '安卓用餐和喝水提醒每天循环；同一时刻会合并成一条提示。iOS 保留最多60条待提醒，按类型分配并在打开应用时续排。通知仍受系统权限和省电设置影响。',
+            '安卓用餐和喝水提醒每天循环；同一时刻会合并成一条提示。iOS 保留最多60条待提醒，按类型分配并在打开应用时续排。通知仍受系统权限、省电设置和厂商后台限制影响；系统设置中的“强制停止”会清除 Android 闹钟，无法由应用恢复。',
           ),
           if (widget.reminders.supported)
             TextButton(

@@ -8,6 +8,7 @@
   },
   "scripts": {
     "android": "node --env-file-if-exists=.env scripts/run-mobile.mjs android",
+    "android:build": "node --env-file-if-exists=.env scripts/build-apk.mjs",
     "ios": "node --env-file-if-exists=.env scripts/run-mobile.mjs ios",
     "web": "node --env-file-if-exists=.env scripts/run-mobile.mjs web",
     "backend": "node --env-file-if-exists=.env scripts/run-backend.mjs",

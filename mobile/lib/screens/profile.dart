@@ -567,6 +567,16 @@ class _ProfilePageState extends State<ProfilePage> {
                   '查看新版本并前往下载',
                   () => run(() => AppUpdate.check(context)),
                 ),
+              if (AppUpdate.supported)
+                FutureBuilder<String?>(
+                  future: AppUpdate.installedVersionName(),
+                  builder: (_, snapshot) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.info_outline, color: pine),
+                    title: const Text('当前版本'),
+                    subtitle: Text(snapshot.data ?? '读取中…'),
+                  ),
+                ),
             ],
           ),
         ),

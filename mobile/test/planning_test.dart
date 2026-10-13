@@ -136,6 +136,42 @@ void main() {
     store.dispose();
     await store.vault.close();
   });
+
+  test('PICC, port and chemotherapy journeys all produce scheduled notifications', () {
+    final records = [
+      for (final category in journeyCategories.keys)
+        CareRecord(
+          kind: 'journey',
+          fields: {
+            'category': category,
+            'last': '2026-10-01T10:00:00',
+            'next': '2026-10-20T10:00:00',
+          },
+        ),
+    ];
+    final data = CareData(
+      records: records,
+      settings: {
+        for (final category in journeyCategories.keys) ...{
+          'notify_$category': 'true',
+          'lead_$category': '3',
+          'count_$category': '1',
+        },
+      },
+    );
+    final scheduled = scheduleReminders(
+      data,
+      DateTime(2026, 10, 12, 8),
+      android: true,
+    );
+    for (final category in journeyCategories.keys) {
+      expect(
+        scheduled.any((reminder) => reminder.channel == category),
+        isTrue,
+        reason: '$category should be scheduled',
+      );
+    }
+  });
   test('health records validate required fields and nine images survive backup restore', () async {
     for (final record in [
       CareRecord(kind: 'weight', fields: {}),
