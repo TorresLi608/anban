@@ -4,10 +4,49 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import android.os.Build
+import android.os.PowerManager
+import android.app.ActivityManager
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 
 class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "app.anban.anban/reminders")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getBackgroundStatus" -> {
+                        val power = getSystemService(POWER_SERVICE) as PowerManager
+                        val activity = getSystemService(ACTIVITY_SERVICE) as ActivityManager
+                        result.success(mapOf(
+                            "manufacturer" to Build.MANUFACTURER,
+                            "androidVersion" to Build.VERSION.RELEASE,
+                            "ignoringBatteryOptimizations" to power.isIgnoringBatteryOptimizations(packageName),
+                            "powerSaveMode" to power.isPowerSaveMode,
+                            "backgroundRestricted" to (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && activity.isBackgroundRestricted)
+                        ))
+                    }
+                    "openBatterySettings", "openAppSettings" -> {
+                        val details = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))
+                        try {
+                            val intent = if (call.method == "openBatterySettings") {
+                                Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                            } else details
+                            startActivity(intent)
+                            result.success(null)
+                        } catch (_: android.content.ActivityNotFoundException) {
+                            try {
+                                startActivity(details)
+                                result.success(null)
+                            } catch (e: android.content.ActivityNotFoundException) {
+                                result.error("settings_unavailable", "无法打开系统设置", e.message)
+                            }
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "app.anban.anban/version")
             .setMethodCallHandler { call, result ->
                 if (call.method != "getVersion") {

@@ -11,6 +11,9 @@ services:
       ANBAN_ADMIN_USERNAME: "${ANBAN_ADMIN_USERNAME:-admin}"
       ANBAN_ADMIN_PASSWORD: "${ANBAN_ADMIN_PASSWORD:-}"
       ANBAN_PUBLIC_URL: "${ANBAN_PUBLIC_URL:-}"
+      ANBAN_NTFY_URL: "${ANBAN_NTFY_URL:-http://ntfy:80}"
+      ANBAN_NTFY_PUBLIC_URL: "${ANBAN_NTFY_PUBLIC_URL:-}"
+      ANBAN_NTFY_TOKEN: "${ANBAN_NTFY_TOKEN:-}"
       DATABASE_URL: "${DATABASE_URL:?Set DATABASE_URL in .env}"
       MINIO_ENDPOINT: "${MINIO_ENDPOINT:?Set MINIO_ENDPOINT in .env}"
       MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:?Set MINIO_ACCESS_KEY in .env}"
@@ -31,6 +34,30 @@ services:
       timeout: 5s
       start_period: 20s
       retries: 3
+  ntfy:
+    image: binwiederhier/ntfy:latest
+    command: serve
+    restart: unless-stopped
+    ports:
+      - "${ANBAN_NTFY_ADDR:-127.0.0.1:8026}:80"
+    environment:
+      NTFY_BASE_URL: "${ANBAN_NTFY_PUBLIC_URL:-}"
+      NTFY_LISTEN_HTTP: ":80"
+      NTFY_CACHE_FILE: /var/lib/ntfy/cache.db
+      NTFY_AUTH_FILE: /var/lib/ntfy/auth.db
+      # Topics are random per-account IDs. Read-only access lets the ntfy
+      # mobile client subscribe without giving it the backend publish token.
+      NTFY_AUTH_DEFAULT_ACCESS: read-only
+    volumes:
+      - ntfy_data:/var/lib/ntfy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+
   admin:
     build:
       context: ./admin
@@ -57,3 +84,6 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+
+volumes:
+  ntfy_data:

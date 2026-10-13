@@ -246,7 +246,7 @@ class _CareShellState extends State<CareShell> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      widget.reminders.refresh(widget.store.data, force: true);
+      widget.reminders.refresh(widget.store.data);
       setState(() {});
     }
   }

@@ -16,3 +16,19 @@ CREATE TABLE IF NOT EXISTS anban_apks (
  CREATE INDEX IF NOT EXISTS anban_sessions_expiry ON anban_sessions(expires_at);
  CREATE TABLE IF NOT EXISTS anban_vaults (user_id text PRIMARY KEY REFERENCES anban_users(id) ON DELETE CASCADE, revision bigint NOT NULL DEFAULT 0, updated_at timestamptz NOT NULL DEFAULT now(), data jsonb);
  CREATE TABLE IF NOT EXISTS anban_files (id text PRIMARY KEY, user_id text NOT NULL REFERENCES anban_users(id) ON DELETE CASCADE, created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS anban_push_settings (
+ user_id text PRIMARY KEY REFERENCES anban_users(id) ON DELETE CASCADE,
+ enabled boolean NOT NULL DEFAULT false,
+ time_zone text NOT NULL DEFAULT 'Asia/Shanghai',
+ last_success timestamptz,
+ last_error text NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS anban_push_jobs (
+ user_id text NOT NULL REFERENCES anban_push_settings(user_id) ON DELETE CASCADE,
+ key text NOT NULL,
+ due_at timestamptz NOT NULL,
+ daily_time text NOT NULL DEFAULT '',
+ retry_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(user_id,key)
+);
+CREATE INDEX IF NOT EXISTS anban_push_jobs_due ON anban_push_jobs(due_at,retry_at);

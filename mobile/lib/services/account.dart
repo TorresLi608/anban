@@ -201,4 +201,27 @@ class Account {
     final uri = VaultSync(session['server'], session['token']).url;
     return '${uri.host}_${uri.port}_${session['userId']}';
   }
+
+  static Future<Map<String, dynamic>> reminderRequest(
+    String method, {
+    Map<String, dynamic>? body,
+    bool test = false,
+  }) async {
+    final api = _api;
+    if (api == null) throw StateError('请先登录');
+    final request = http.Request(
+      method,
+      api.url.replace(
+        path: test ? '/api/v1/reminders/test' : '/api/v1/reminders',
+      ),
+    );
+    request.headers.addAll(api.headers);
+    if (body != null)
+      request.body = jsonEncode({...body, 'revision': api.revision});
+    return api.check(
+      await http.Response.fromStream(
+        await request.send().timeout(const Duration(seconds: 30)),
+      ).timeout(const Duration(seconds: 30)),
+    );
+  }
 }

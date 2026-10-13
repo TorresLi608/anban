@@ -5,6 +5,7 @@ import '../data/models.dart';
 import '../data/planning.dart';
 import '../data/store.dart';
 import '../services/reminders.dart';
+import '../services/account.dart';
 import '../ui.dart';
 
 Future<void> openSettings(
@@ -31,6 +32,7 @@ class _SettingsPageState extends State<SettingsPage> {
   late Map<String, TextEditingController> inputs;
   late Map<String, bool> switches;
   late String reminderMode;
+  bool remoteEnabled = false;
   bool saving = false;
   String? error;
   @override
@@ -38,6 +40,7 @@ class _SettingsPageState extends State<SettingsPage> {
     super.initState();
     final s = widget.store.data.settings;
     reminderMode = normalizedReminderMode(s['reminderMode']);
+    remoteEnabled = s['notifyRemote'] == 'true';
     final defaults = {
       'mealStart': '07:30',
       'mealEnd': '18:30',
@@ -84,6 +87,7 @@ class _SettingsPageState extends State<SettingsPage> {
         for (final e in inputs.entries) e.key: e.value.text.trim(),
         for (final e in switches.entries) e.key: '${e.value}',
         'reminderMode': reminderMode,
+        'notifyRemote': '$remoteEnabled',
       };
       mealTimes(values);
       if (values['waterStart']!.isNotEmpty ||
@@ -99,6 +103,7 @@ class _SettingsPageState extends State<SettingsPage> {
         settingInt(values, 'count_$category', 1, 1, 8);
       }
       if (switches.values.any((v) => v) &&
+          !remoteEnabled &&
           widget.reminders.supported &&
           !await widget.reminders.requestPermission()) {
         throw StateError('请先允许系统通知权限');
@@ -108,7 +113,7 @@ class _SettingsPageState extends State<SettingsPage> {
       if (widget.reminders.lastError != null) {
         throw StateError('配置已保存，但${widget.reminders.lastError}');
       }
-      if (widget.reminders.warnings.isNotEmpty) {
+          if (widget.reminders.warnings.isNotEmpty) {
         throw StateError('配置已保存；${widget.reminders.warnings.join('；')}');
       }
       if (mounted) Navigator.pop(context);
@@ -197,6 +202,65 @@ class _SettingsPageState extends State<SettingsPage> {
       child: ListView(
         padding: const EdgeInsets.all(24),
         children: [
+          Section(
+            '后端推送（ntfy）',
+            child: Column(
+              children: [
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('使用 ntfy 后端提醒'),
+                  subtitle: const Text(
+                    '开启后发送提醒时间和时区到后端，由 ntfy 客户端显示通知；本地日常提醒关闭以免重复。照护内容不发送给 ntfy。',
+                  ),
+                  value: remoteEnabled,
+                  onChanged: saving
+                      ? null
+                      : (value) => setState(() => remoteEnabled = value),
+                ),
+                const Note(
+                  '需另行安装 ntfy 客户端，添加自建服务器和只读账号，再订阅本账号主题。ntfy 客户端需允许后台运行。设置保存后生效。',
+                ),
+                TextButton(
+                  onPressed: () => attempt(context, () async {
+                    final info = await Account.reminderRequest('GET');
+                    if (!context.mounted) return;
+                    await showDialog<void>(
+                      context: context,
+                      builder: (c) => AlertDialog(
+                        title: const Text('ntfy 订阅信息'),
+                        content: SingleChildScrollView(
+                          child: SelectableText(
+                            '服务器：${info['server']}\n主题：${info['topic']}\n后端待提醒：${info['pending']}\n最近提交 ntfy：${info['lastSuccess'] ?? '暂无'}\n发送错误：${info['lastError'] == '' ? '暂无' : info['lastError']}\n\n提交成功不代表手机收到。请使用部署时分配的只读账号订阅。',
+                          ),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(c),
+                            child: const Text('关闭'),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                  child: const Text('查看订阅信息与后端状态'),
+                ),
+                OutlinedButton(
+                  onPressed: () => attempt(context, () async {
+                    final info = await Account.reminderRequest(
+                      'POST',
+                      test: true,
+                    );
+                    if (context.mounted)
+                      toast(
+                        context,
+                        '后端测试已安排：${info['at']}。请返回桌面/锁屏，等待 ntfy 通知。',
+                      );
+                  }),
+                  child: const Text('1 分钟后发送后端测试通知'),
+                ),
+              ],
+            ),
+          ),
           if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
             const Section(
               '提醒方式',
@@ -287,6 +351,25 @@ class _SettingsPageState extends State<SettingsPage> {
             builder: (_, _) => Note(widget.reminders.status),
           ),
           const SizedBox(height: 16),
+          if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) ...[
+            ListenableBuilder(
+              listenable: widget.reminders,
+              builder: (_, _) => Note(widget.reminders.backgroundStatus),
+            ),
+            const Note(
+              '小米手机若回桌面/锁屏后漏提醒，请在安伴的系统应用设置中开启后台自启动，并将省电策略设为“无限制”。通知权限与这些后台设置相互独立；系统状态未报告限制也不代表厂商没有限制。',
+            ),
+            TextButton(
+              onPressed: () =>
+                  attempt(context, widget.reminders.openAppSettings),
+              child: const Text('打开应用后台设置'),
+            ),
+            TextButton(
+              onPressed: () =>
+                  attempt(context, widget.reminders.openBatterySettings),
+              child: const Text('打开电池优化设置'),
+            ),
+          ],
           const Note(
             '安卓用餐和喝水提醒每天循环；同一时刻会合并成一条提示。iOS 保留最多60条待提醒，按类型分配并在打开应用时续排。通知仍受系统权限、省电设置和厂商后台限制影响；系统设置中的“强制停止”会清除 Android 闹钟，无法由应用恢复。',
           ),

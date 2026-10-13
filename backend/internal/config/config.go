@@ -28,6 +28,9 @@ type Config struct {
 	AdminUsername       string
 	AdminPassword       string
 	PublicURL           string
+	NtfyURL             string
+	NtfyPublicURL       string
+	NtfyToken           string
 }
 
 func Load() Config {
@@ -47,6 +50,9 @@ func Load() Config {
 		AdminUsername:       strings.ToLower(strings.TrimSpace(env("ANBAN_ADMIN_USERNAME", "admin"))),
 		AdminPassword:       os.Getenv("ANBAN_ADMIN_PASSWORD"),
 		PublicURL:           strings.TrimRight(strings.TrimSpace(os.Getenv("ANBAN_PUBLIC_URL")), "/"),
+		NtfyURL:             strings.TrimRight(strings.TrimSpace(os.Getenv("ANBAN_NTFY_URL")), "/"),
+		NtfyPublicURL:       strings.TrimRight(strings.TrimSpace(os.Getenv("ANBAN_NTFY_PUBLIC_URL")), "/"),
+		NtfyToken:           strings.TrimSpace(os.Getenv("ANBAN_NTFY_TOKEN")),
 	}
 }
 
@@ -59,6 +65,13 @@ func env(key, fallback string) string {
 
 // Validate rejects client URLs before attempting any database connection.
 func (c Config) Validate() error {
+	if c.NtfyPublicURL != "" || c.NtfyToken != "" {
+		internal, e1 := url.Parse(c.NtfyURL)
+		public, e2 := url.Parse(c.NtfyPublicURL)
+		if e1 != nil || e2 != nil || internal.Hostname() == "" || (internal.Scheme != "http" && internal.Scheme != "https") || public.Scheme != "https" || public.Hostname() == "" || c.NtfyToken == "" || strings.ContainsAny(c.NtfyToken, "\r\n") || internal.User != nil || public.User != nil || internal.RawQuery != "" || public.RawQuery != "" || internal.Fragment != "" || public.Fragment != "" || (internal.Path != "" && internal.Path != "/") || (public.Path != "" && public.Path != "/") {
+			return errors.New("ntfy 需配置有效的 ANBAN_NTFY_URL、手机可访问的 HTTPS ANBAN_NTFY_PUBLIC_URL 和发布用户 ANBAN_NTFY_TOKEN")
+		}
+	}
 	host, port, err := net.SplitHostPort(c.Addr)
 	n, numberErr := strconv.Atoi(port)
 	if err != nil || strings.ContainsAny(host, "/?#") || numberErr != nil || n < 0 || n > 65535 {
