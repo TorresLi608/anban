@@ -288,8 +288,44 @@ class LocalVault {
       for (var i = 0; i < (e!['chunks'] as int); i++) {
         await _store.record('file:$id:$i').delete(db);
       }
+      // 保留元数据并标记为已释放本地块
+      await _store.record('file:$id').put(db, {
+        ...e,
+        'released': true,
+      });
+    }
+  }
+
+  Future<void> purgeAttachment(String id) async {
+    final e = await _store.record('file:$id').get(db);
+    if (e?['chunks'] is int) {
+      for (var i = 0; i < (e!['chunks'] as int); i++) {
+        await _store.record('file:$id:$i').delete(db);
+      }
     }
     await _store.record('file:$id').delete(db);
+    remoteAttachments.remove(id);
+    _cache.remove(id);
+  }
+
+  Future<void> rekeyAttachment(String oldId, String newId) async {
+    final recordData = await _store.record('file:$oldId').get(db);
+    if (recordData != null) {
+      await _store.record('file:$newId').put(db, recordData);
+      final chunks = recordData['chunks'] as int? ?? 0;
+      for (var i = 0; i < chunks; i++) {
+        final chunk = await _store.record('file:$oldId:$i').get(db);
+        if (chunk != null) {
+          await _store.record('file:$newId:$i').put(db, chunk);
+          await _store.record('file:$oldId:$i').delete(db);
+        }
+      }
+      await _store.record('file:$oldId').delete(db);
+    }
+    final cached = _cache.remove(oldId);
+    if (cached != null) {
+      _cache[newId] = cached;
+    }
   }
 
   Future<Map<String, dynamic>> backup(CareData data) async {

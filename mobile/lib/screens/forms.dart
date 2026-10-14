@@ -312,7 +312,7 @@ class _RecordFormState extends State<RecordForm> {
       if (size > maxAttachmentBytes) {
         throw const FormatException('图片或视频不能超过 200 MB');
       }
-      final id = await widget.store.vault.addAttachmentStream(
+      final id = await widget.store.uploadAttachment(
         file.readAsByteStream(),
         filename: file.name,
       );
@@ -698,8 +698,9 @@ class _RecordFormState extends State<RecordForm> {
         if (await file.length() > 20 * 1024 * 1024) {
           throw const FormatException('单张图片不能超过20 MB');
         }
-        final id = await widget.store.vault.addAttachment(
+        final id = await widget.store.uploadAttachmentBytes(
           await file.readAsBytes(),
+          filename: file.name,
         );
         added.add({'id': id, 'name': file.name});
       }

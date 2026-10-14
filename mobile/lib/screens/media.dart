@@ -51,7 +51,7 @@ Future<void> importMedia(
       bytes = await result.readAsBytes();
       filename = result.name;
     }
-    final attachment = await store.vault.addAttachment(bytes, filename: filename);
+    final attachment = await store.uploadAttachmentBytes(bytes, filename: filename);
     if (!context.mounted) {
       return;
     }

@@ -165,12 +165,84 @@ class CareStore extends ChangeNotifier {
     return result;
   }
 
-  Future<void> deleteAttachment(String id) async {
-    await vault.releaseLocalAttachment(id);
+  Future<String> uploadAttachment(
+    Stream<List<int>> source, {
+    String? filename,
+  }) async {
+    final localId = await vault.addAttachmentStream(source, filename: filename);
     final api = Account.api;
     if (api != null) {
       try {
-        await api.deleteAttachment(id);
+        final stream = vault.attachmentStream(localId);
+        final remote = await api.uploadSingleAttachment(stream, localId, filename);
+        final remoteId = remote.parts.first;
+        if (remoteId != localId) {
+          await vault.rekeyAttachment(localId, remoteId);
+          vault.remoteAttachments[remoteId] = remote;
+          vault.remoteAttachments.remove(localId);
+        } else {
+          vault.remoteAttachments[remoteId] = remote;
+        }
+        return remoteId;
+      } catch (_) {
+        return localId;
+      }
+    }
+    return localId;
+  }
+
+  Future<String> uploadAttachmentBytes(
+    Uint8List bytes, {
+    String? filename,
+  }) => uploadAttachment(Stream.value(bytes), filename: filename);
+
+  Future<String> resolveRemoteFileId(String id) async {
+    final existing = vault.remoteAttachments[id];
+    if (existing != null && existing.parts.isNotEmpty) {
+      return existing.parts.first;
+    }
+
+    final api = Account.api;
+    if (api == null) {
+      throw StateError('请先登录安伴账号');
+    }
+
+    // 优先尝试触发一次完整的资料与附件同步
+    if (publish != null) {
+      try {
+        await publish!(data, vault);
+        final synced = vault.remoteAttachments[id];
+        if (synced != null && synced.parts.isNotEmpty) {
+          return synced.parts.first;
+        }
+      } catch (_) {}
+    }
+
+    // 若依然未同步，按需将该附件流直接单独上传至云端
+    try {
+      final filename = await vault.attachmentName(id);
+      final uploaded = await api.uploadSingleAttachment(
+        vault.attachmentStream(id),
+        id,
+        filename,
+      );
+      vault.remoteAttachments[id] = uploaded;
+      return uploaded.parts.first;
+    } catch (_) {
+      return id;
+    }
+  }
+
+  Future<void> deleteAttachment(String id) async {
+    final remote = vault.remoteAttachments[id];
+    final remoteId = (remote != null && remote.parts.isNotEmpty)
+        ? remote.parts.first
+        : id;
+    await vault.purgeAttachment(id);
+    final api = Account.api;
+    if (api != null) {
+      try {
+        await api.deleteAttachment(remoteId);
       } catch (_) {
         /* 避免无网络时阻断本地操作 */
       }
@@ -199,8 +271,12 @@ class CareStore extends ChangeNotifier {
 
     final api = Account.api;
     if (api != null) {
+      final remote = vault.remoteAttachments[id];
+      final remoteId = (remote != null && remote.parts.isNotEmpty)
+          ? remote.parts.first
+          : id;
       try {
-        await api.renameAttachment(id, newName);
+        await api.renameAttachment(remoteId, newName);
       } catch (_) {}
     }
   }
@@ -210,6 +286,7 @@ class CareStore extends ChangeNotifier {
     if (api == null) {
       throw StateError('请先登录安伴账号，即可生成专属分享链接');
     }
-    return api.shareAttachment(id);
+    final remoteId = await resolveRemoteFileId(id);
+    return api.shareAttachment(remoteId);
   }
 }

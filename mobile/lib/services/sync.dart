@@ -255,12 +255,32 @@ class VaultSync {
         jsonDecode(utf8.decode(bytes)) as Map,
       );
     }
-    final data = CareData.fromJson(decrypted['data']);
+    final initialData = CareData.fromJson(decrypted['data']);
     final references = Map<String, dynamic>.from(decrypted['files'] ?? {});
     final files = <String, RemoteAttachment>{};
-    for (final id in data.records.expand(attachmentIds).toSet()) {
-      files[id] = RemoteAttachment.fromJson(references[id]);
+    for (final id in initialData.records.expand(attachmentIds).toSet()) {
+      if (references.containsKey(id)) {
+        files[id] = RemoteAttachment.fromJson(references[id]);
+      }
     }
+
+    // 自动升级历史数据：将旧版临时短 ID 就地永久替换为云端真实 64 位 ID
+    final migratedRecords = initialData.records.map((r) {
+      final oldId = r.text('attachment');
+      if (oldId.isNotEmpty && references.containsKey(oldId)) {
+        final ref = RemoteAttachment.fromJson(references[oldId]);
+        if (ref.parts.isNotEmpty && ref.parts.first != oldId) {
+          final remoteId = ref.parts.first;
+          files[remoteId] = ref;
+          return r.copy(fields: {
+            ...r.fields,
+            'attachment': remoteId,
+          });
+        }
+      }
+      return r;
+    }).toList();
+    final data = initialData.copy(records: migratedRecords);
     return (
       data: data,
       revision: response['revision'] as int,
@@ -309,6 +329,12 @@ class VaultSync {
         .timeout(const Duration(seconds: 30));
     check(response);
   }
+
+  Future<RemoteAttachment> uploadSingleAttachment(
+    Stream<List<int>> source,
+    String id, [
+    String? filename,
+  ]) => _upload(source, id, null, filename);
 
   Future<String> shareAttachment(String id) async {
     final response = check(

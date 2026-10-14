@@ -138,7 +138,7 @@ class _MedicalPageState extends State<MedicalPage> {
         if (size != null && size > maxAttachmentBytes) {
           throw const FormatException('单个文件最多 200 MB');
         }
-        attachment = await vault.addAttachmentStream(
+        attachment = await widget.store.uploadAttachment(
           file.readAsByteStream(),
           filename: file.name,
         );

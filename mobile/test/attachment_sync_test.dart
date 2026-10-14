@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:anban/data/attachments.dart';
 import 'package:anban/data/models.dart';
+import 'package:anban/data/store.dart';
 import 'package:anban/data/vault.dart';
 import 'package:anban/services/sync.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -221,5 +222,23 @@ void main() {
         return http.Response('Not Found', 404);
       }),
     );
+  });
+
+  test('CareStore resolves remoteId and preserves local metadata upon release', () async {
+    final vault = await LocalVault.memory();
+    final localId = await vault.addAttachment(Uint8List.fromList([1, 2, 3]), filename: '血液报告.pdf');
+    final store = CareStore(vault, CareData());
+
+    // 绑定远程映射
+    vault.remoteAttachments[localId] = RemoteAttachment(['cloud-file-hash-64']);
+
+    // 验证本地元数据在 releaseLocalAttachment 之后依然完整保留
+    await vault.releaseLocalAttachment(localId);
+    expect(await vault.attachmentName(localId), '血液报告.pdf');
+
+    // 验证 resolveRemoteFileId 准确返回后端的 64 位文件标识
+    expect(await store.resolveRemoteFileId(localId), 'cloud-file-hash-64');
+
+    await vault.close();
   });
 }
