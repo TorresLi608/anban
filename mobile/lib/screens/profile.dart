@@ -330,15 +330,77 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
     );
     if (result == true) {
-      await Account.login(
-        widget.store,
-        Account.apiBase,
-        username.text.trim(),
-        secret.text,
-        register,
-      );
-      if (mounted) toast(context, '已登录 ${Account.current!['username']}');
+      try {
+        await Account.login(
+          widget.store,
+          Account.apiBase,
+          username.text.trim(),
+          secret.text,
+          register,
+        );
+        if (mounted) toast(context, '已登录 ${Account.current!['username']}');
+      } catch (e) {
+        final err = e.toString();
+        if (err.contains('加密备份') ||
+            err.contains('SecretBox') ||
+            err.contains('解密密码')) {
+          if (!mounted) rethrow;
+          final migrationPassword = await _promptLegacyDecryptionPassword(context);
+          if (migrationPassword != null && migrationPassword.isNotEmpty) {
+            await Account.login(
+              widget.store,
+              Account.apiBase,
+              username.text.trim(),
+              secret.text,
+              false,
+              migrationPassword,
+            );
+            if (mounted) toast(context, '已登录并完成历史数据平滑迁移');
+            return;
+          }
+        }
+        rethrow;
+      }
     }
+  }
+
+  Future<String?> _promptLegacyDecryptionPassword(BuildContext context) async {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('输入旧版数据解密密码'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '检测到您的云端包含旧版加密备份，且与登录密码不一致。请输入历史解密密码以导入并永久转换为新版免密格式：',
+              style: TextStyle(fontSize: 13, height: 1.5),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: '旧版数据解密密码',
+                hintText: '输入历史设置的独立加密密码',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('确认迁移并登录'),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildPatientHeroCard(CareData data) {

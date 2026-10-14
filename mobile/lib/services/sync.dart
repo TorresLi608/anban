@@ -211,7 +211,12 @@ class VaultSync {
     _staged.clear();
   }
 
-  Future<({CareData data, int revision, Map<String, RemoteAttachment> files})>
+  Future<({
+    CareData data,
+    int revision,
+    Map<String, RemoteAttachment> files,
+    bool wasEncrypted,
+  })>
   pull([String? password, bool allowEmpty = false]) async {
     final response = check(
       await http
@@ -224,11 +229,16 @@ class VaultSync {
         data: CareData(),
         revision: response['revision'] as int,
         files: <String, RemoteAttachment>{},
+        wasEncrypted: false,
       );
     }
     var decrypted = Map<String, dynamic>.from(response['data'] as Map);
+    var wasEncrypted = false;
     // 兼容旧版加密资料
-    if (decrypted.containsKey('ciphertext')) {
+    if (decrypted.containsKey('ciphertext') ||
+        decrypted['version'] == 1 ||
+        decrypted['algorithm'] == 'AES-256-GCM') {
+      wasEncrypted = true;
       decrypted = await openBackup(decrypted, password ?? '');
     }
     if (decrypted['manifest'] != null) {
@@ -251,12 +261,22 @@ class VaultSync {
     for (final id in data.records.expand(attachmentIds).toSet()) {
       files[id] = RemoteAttachment.fromJson(references[id]);
     }
-    return (data: data, revision: response['revision'] as int, files: files);
+    return (
+      data: data,
+      revision: response['revision'] as int,
+      files: files,
+      wasEncrypted: wasEncrypted,
+    );
   }
 
   Future<void> loadInto(
     LocalVault vault,
-    ({CareData data, int revision, Map<String, RemoteAttachment> files})
+    ({
+      CareData data,
+      int revision,
+      Map<String, RemoteAttachment> files,
+      bool wasEncrypted,
+    })
     snapshot, [
     String? password,
   ]) async {

@@ -177,4 +177,34 @@ void main() {
     await login();
     expect(store.data.profile['name'], '云端患者');
   });
+
+  check(
+    'legacy encrypted cloud backup automatically decrypts with login password and migrates to plain',
+    () async {
+      final salt = randomBytes(16);
+      final key = await passwordKey('login-secret', salt);
+      final encrypted = await encryptBytes(
+        utf8.encode(
+          jsonEncode({
+            'data': CareData(profile: {'name': '加密历史患者'}).toJson(),
+            'files': <String, dynamic>{},
+          }),
+        ),
+        key,
+      );
+      cloudPayload = {
+        'version': 1,
+        'algorithm': 'AES-256-GCM',
+        'iterations': 210000,
+        'salt': base64Encode(salt),
+        ...encrypted,
+      };
+
+      await login();
+      expect(store.data.profile['name'], '加密历史患者');
+      // 验证已自动调用 PUT /api/v1/vault 转换为明文备份
+      expect(cloudPayload.containsKey('ciphertext'), isFalse);
+      expect(cloudPayload['data']['profile']['name'], '加密历史患者');
+    },
+  );
 }

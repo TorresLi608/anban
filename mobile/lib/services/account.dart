@@ -53,6 +53,12 @@ class Account {
       if (e.statusCode != 401) rethrow;
       await _secure.delete(key: _sessionKey);
       return false;
+    } on FormatException catch (e) {
+      if (e.message.contains('加密备份') || e.message.contains('密码')) {
+        await _secure.delete(key: _sessionKey);
+        return false;
+      }
+      rethrow;
     }
   }
 
@@ -83,16 +89,21 @@ class Account {
     if (!_validSession(response)) {
       throw const FormatException('服务器返回了无效会话');
     }
-    await _connect(store, {
-      ...response,
-      'server': guest.url.replace(path: '').toString(),
-    });
+    await _connect(
+      store,
+      {
+        ...response,
+        'server': guest.url.replace(path: '').toString(),
+      },
+      password: encryptionPassword ?? password,
+    );
   }
 
   static Future<void> _connect(
     CareStore store,
-    Map<String, dynamic> session,
-  ) async {
+    Map<String, dynamic> session, {
+    String? password,
+  }) async {
     final api = VaultSync(session['server'], session['token']);
     await store.exclusive(() async {
       final vault = await LocalVault.memory();
@@ -116,8 +127,8 @@ class Account {
         ].any((key) => configured[key]?.isNotEmpty != true)) {
           throw const FormatException('健康选项配置不完整');
         }
-        final remote = await api.pull(null, true);
-        await api.loadInto(vault, remote);
+        final remote = await api.pull(password, true);
+        await api.loadInto(vault, remote, password);
         final data = remote.data;
         await _secure.write(key: _sessionKey, value: jsonEncode(session));
         current = session;
@@ -125,6 +136,15 @@ class Account {
         store.healthOptions = configured;
         store.publish = (data, vault) => api.save(data, vault);
         await store.replaceVault(vault, data);
+
+        // 如果拉取自旧版加密备份，解密成功后自动以明文格式重新保存至云端，实现一劳永逸的脱密迁移
+        if (remote.wasEncrypted) {
+          try {
+            await api.save(data, vault);
+          } catch (_) {
+            // 忽略非关键保存错误，保证正常登录
+          }
+        }
       } catch (_) {
         await vault.close();
         rethrow;
