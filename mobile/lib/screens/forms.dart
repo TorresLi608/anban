@@ -314,6 +314,7 @@ class _RecordFormState extends State<RecordForm> {
       }
       final id = await widget.store.vault.addAttachmentStream(
         file.readAsByteStream(),
+        filename: file.name,
       );
       if (!mounted) return;
       setState(() {

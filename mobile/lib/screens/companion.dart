@@ -115,7 +115,10 @@ class _CompanionPageState extends State<CompanionPage>
         await recorder.stop();
         await recorded!.future.timeout(const Duration(seconds: 5));
         final bytes = wav(pcm!.takeBytes());
-        final attachment = await widget.store.vault.addAttachment(bytes);
+        final attachment = await widget.store.vault.addAttachment(
+          bytes,
+          filename: '留言.wav',
+        );
         if (mounted) {
           setState(() => recording = false);
           await editRecord(

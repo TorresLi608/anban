@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'models.dart';
 import 'planning.dart';
 import 'vault.dart';
+import '../services/account.dart';
 
 class CareStore extends ChangeNotifier {
   LocalVault vault;
@@ -162,5 +163,53 @@ class CareStore extends ChangeNotifier {
     });
     _pending = result.catchError((Object _) {});
     return result;
+  }
+
+  Future<void> deleteAttachment(String id) async {
+    await vault.releaseLocalAttachment(id);
+    final api = Account.api;
+    if (api != null) {
+      try {
+        await api.deleteAttachment(id);
+      } catch (_) {
+        /* 避免无网络时阻断本地操作 */
+      }
+    }
+  }
+
+  Future<void> renameAttachment(String id, String newName) async {
+    await vault.renameAttachment(id, newName);
+    await change((d) {
+      final updatedRecords = d.records.map((r) {
+        if (r.text('attachment') == id) {
+          final ext = newName.contains('.')
+              ? newName.split('.').last.toLowerCase()
+              : r.text('extension');
+          return r.copy(fields: {
+            ...r.fields,
+            'title': newName,
+            'filename': newName,
+            'extension': ext,
+          });
+        }
+        return r;
+      }).toList();
+      return d.copy(records: updatedRecords);
+    });
+
+    final api = Account.api;
+    if (api != null) {
+      try {
+        await api.renameAttachment(id, newName);
+      } catch (_) {}
+    }
+  }
+
+  Future<String> shareAttachment(String id) async {
+    final api = Account.api;
+    if (api == null) {
+      throw StateError('请先登录安伴账号，即可生成专属分享链接');
+    }
+    return api.shareAttachment(id);
   }
 }

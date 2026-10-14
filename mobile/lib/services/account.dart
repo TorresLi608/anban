@@ -15,6 +15,7 @@ class Account {
   );
   static Map<String, dynamic>? current;
   static VaultSync? _api;
+  static VaultSync? get api => _api;
   static const _secure = FlutterSecureStorage(
     iOptions: IOSOptions(
       accessibility: KeychainAccessibility.unlocked_this_device,

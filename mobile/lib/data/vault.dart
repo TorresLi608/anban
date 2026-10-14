@@ -156,11 +156,14 @@ class LocalVault {
     await _store.record('state').put(db, data.toJson());
   }
 
-  Future<String> addAttachment(Uint8List bytes) async {
-    return addAttachmentStream(Stream.value(bytes));
+  Future<String> addAttachment(Uint8List bytes, {String? filename}) async {
+    return addAttachmentStream(Stream.value(bytes), filename: filename);
   }
 
-  Future<String> addAttachmentStream(Stream<List<int>> source) async {
+  Future<String> addAttachmentStream(
+    Stream<List<int>> source, {
+    String? filename,
+  }) async {
     final id = newId();
     var count = 0, size = 0;
     try {
@@ -176,13 +179,30 @@ class LocalVault {
         count++;
       }
       if (size == 0) throw const FormatException('不能上传空文件');
-      await _store.record('file:$id').put(db, {'chunks': count, 'size': size});
+      await _store.record('file:$id').put(db, {
+        'chunks': count,
+        'size': size,
+        if (filename != null && filename.isNotEmpty) 'filename': filename,
+      });
       return id;
     } catch (_) {
       for (var i = 0; i < count; i++) {
         await _store.record('file:$id:$i').delete(db);
       }
       rethrow;
+    }
+  }
+
+  Future<String?> attachmentName(String id) async {
+    final local = await _store.record('file:$id').get(db);
+    return local?['filename'] as String?;
+  }
+
+  Future<void> renameAttachment(String id, String newName) async {
+    final record = _store.record('file:$id');
+    final local = await record.get(db);
+    if (local != null) {
+      await record.put(db, {...local, 'filename': newName});
     }
   }
 

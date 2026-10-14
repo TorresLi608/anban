@@ -1,5 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../data/attachments.dart';
 import '../data/medical.dart';
@@ -136,7 +138,10 @@ class _MedicalPageState extends State<MedicalPage> {
         if (size != null && size > maxAttachmentBytes) {
           throw const FormatException('单个文件最多 200 MB');
         }
-        attachment = await vault.addAttachmentStream(file.readAsByteStream());
+        attachment = await vault.addAttachmentStream(
+          file.readAsByteStream(),
+          filename: file.name,
+        );
         if (!identical(vault, widget.store.vault)) {
           throw StateError('账号已切换，请重新上传');
         }
@@ -177,6 +182,114 @@ class _MedicalPageState extends State<MedicalPage> {
   }
 
   Future<void> action(CareRecord r, String value) async {
+    if (value == 'preview') {
+      if (r.kind == 'document' && r.text('attachment').isNotEmpty) {
+        await previewMedia(context, widget.store, r);
+      } else {
+        await Navigator.push(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => MedicalDetailPage(store: widget.store, id: r.id),
+          ),
+        );
+      }
+      return;
+    }
+    if (value == 'rename') {
+      final c = TextEditingController(text: medicalTitle(r));
+      final newName = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('修改文件名称'),
+          content: TextField(
+            controller: c,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: '文件名称'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final t = c.text.trim();
+                if (t.isNotEmpty) Navigator.pop(ctx, t);
+              },
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      );
+      if (newName != null && newName.isNotEmpty && newName != medicalTitle(r)) {
+        final att = r.text('attachment');
+        if (att.isNotEmpty) {
+          await widget.store.renameAttachment(att, newName);
+        } else {
+          await widget.store.put(
+            r.copy(fields: {...r.fields, 'title': newName, 'filename': newName}),
+          );
+        }
+        if (mounted) toast(context, '文件名称已修改为 $newName');
+      }
+      return;
+    }
+    if (value == 'share') {
+      final att = r.text('attachment');
+      if (att.isEmpty) {
+        toast(context, '该档案没有可分享的文件');
+        return;
+      }
+      try {
+        final url = await widget.store.shareAttachment(att);
+        if (!mounted) return;
+        showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('公开分享链接'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '任何人打开此链接，均可在手机或电脑浏览器中直接预览和下载该文件：',
+                  style: TextStyle(fontSize: 13, height: 1.5),
+                ),
+                const SizedBox(height: 12),
+                SelectableText(
+                  url,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: pine,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: url));
+                  toast(context, '分享链接已复制到剪贴板');
+                  Navigator.pop(ctx);
+                },
+                child: const Text('复制链接'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                  Navigator.pop(ctx);
+                },
+                child: const Text('浏览器预览'),
+              ),
+            ],
+          ),
+        );
+      } catch (e) {
+        if (mounted) toast(context, '$e');
+      }
+      return;
+    }
     if (value == 'edit') {
       await editRecord(context, widget.store, r.kind, record: r);
       return;
@@ -200,13 +313,18 @@ class _MedicalPageState extends State<MedicalPage> {
     if (value == 'delete') {
       if (!await confirm(
         context,
-        '删除${r.kind == 'folder' ? '文件夹' : '这条记录'}？',
-        '关联会一并解除，其他看诊和医嘱记录会保留。非空文件夹需先移出其中内容。',
-        action: '删除',
+        '删除${r.kind == 'folder' ? '文件夹' : '文件'}？',
+        '将彻底删除记录及云端存储（MinIO）中的源文件，释放存储空间。不可恢复。',
+        action: '彻底删除',
       )) {
         return;
       }
+      final att = r.text('attachment');
+      if (att.isNotEmpty) {
+        await widget.store.deleteAttachment(att);
+      }
       await widget.store.remove(r);
+      if (mounted) toast(context, '已彻底删除并清理云端源文件');
       return;
     }
     if (value == 'pin') {
@@ -217,20 +335,17 @@ class _MedicalPageState extends State<MedicalPage> {
       );
       return;
     }
-    if (value == 'export' && mounted) {
+    if ((value == 'export' || value == 'download') && mounted) {
       if (r.kind == 'document' && r.text('attachment').isNotEmpty) {
-        if (!await confirm(
-          context,
-          '导出原文件？',
-          '导出的是未加密副本，请妥善保管。',
-          action: '导出',
-        )) {
-          return;
-        }
-        await FilePicker.saveFile(
-          fileName: safeFileName(r.text('filename', medicalTitle(r))),
-          bytes: await widget.store.vault.attachment(r.text('attachment')),
+        final filename = safeFileName(r.text('filename', medicalTitle(r)));
+        final bytes = await widget.store.vault.attachment(r.text('attachment'));
+        final path = await FilePicker.saveFile(
+          fileName: filename,
+          bytes: bytes,
         );
+        if (mounted) {
+          toast(context, path == null ? '已取消保存' : '文件已保存到本地：$filename');
+        }
       } else {
         await exportMedical(
           context,
@@ -494,6 +609,48 @@ class _MedicalPageState extends State<MedicalPage> {
                           ),
                           onSelected: (value) => run(() => action(r, value)),
                           itemBuilder: (_) => [
+                            if (r.kind == 'document' || r.text('attachment').isNotEmpty) ...[
+                              const PopupMenuItem(
+                                value: 'preview',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.visibility_outlined, size: 18),
+                                    SizedBox(width: 8),
+                                    Text('预览查看'),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuItem(
+                                value: 'rename',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.edit_note_rounded, size: 18),
+                                    SizedBox(width: 8),
+                                    Text('修改名称'),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuItem(
+                                value: 'share',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.share_rounded, size: 18),
+                                    SizedBox(width: 8),
+                                    Text('分享链接'),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuItem(
+                                value: 'download',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.download_rounded, size: 18),
+                                    SizedBox(width: 8),
+                                    Text('下载保存'),
+                                  ],
+                                ),
+                              ),
+                            ],
                             const PopupMenuItem(value: 'edit', child: Text('编辑')),
                             if (['folder', 'document'].contains(r.kind))
                               const PopupMenuItem(
@@ -507,8 +664,12 @@ class _MedicalPageState extends State<MedicalPage> {
                                   r.text('pinned') == 'true' ? '取消置顶' : '置顶',
                                 ),
                               ),
-                            const PopupMenuItem(value: 'export', child: Text('导出')),
-                            const PopupMenuItem(value: 'delete', child: Text('删除')),
+                            if (r.kind != 'document' && r.text('attachment').isEmpty)
+                              const PopupMenuItem(value: 'export', child: Text('导出')),
+                            const PopupMenuItem(
+                              value: 'delete',
+                              child: Text('彻底删除', style: TextStyle(color: Colors.red)),
+                            ),
                           ],
                         ),
                       ],

@@ -159,4 +159,67 @@ void main() {
       );
     },
   );
+
+  test('LocalVault preserves and updates attachment filename', () async {
+    final vault = await LocalVault.memory();
+    final bytes = Uint8List.fromList([1, 2, 3, 4]);
+    final id = await vault.addAttachment(bytes, filename: '化验报告.pdf');
+    expect(await vault.attachmentName(id), '化验报告.pdf');
+
+    await vault.renameAttachment(id, '化验报告_修改.pdf');
+    expect(await vault.attachmentName(id), '化验报告_修改.pdf');
+    expect(await vault.attachment(id), bytes);
+    await vault.close();
+  });
+
+  test('VaultSync supports rename, delete and share operations', () async {
+    final api = VaultSync('http://localhost:8080', 'test-token');
+    final recordedRequests = <http.Request>[];
+
+    await http.runWithClient(
+      () async {
+        // 测试重命名
+        await api.renameAttachment('file-123', '新报告.pdf');
+        expect(recordedRequests.last.method, 'PUT');
+        expect(recordedRequests.last.url.path, '/api/v1/files/file-123/rename');
+        final renameBody = jsonDecode(recordedRequests.last.body) as Map;
+        expect(renameBody['filename'], '新报告.pdf');
+
+        // 测试分享链接生成
+        final shareUrl = await api.shareAttachment('file-123');
+        expect(recordedRequests.last.method, 'POST');
+        expect(recordedRequests.last.url.path, '/api/v1/files/file-123/share');
+        expect(shareUrl, 'http://localhost:8080/api/v1/share/mock-share-token');
+
+        // 测试删除 MinIO 源文件
+        await api.deleteAttachment('file-123');
+        expect(recordedRequests.last.method, 'DELETE');
+        expect(recordedRequests.last.url.path, '/api/v1/files/file-123');
+      },
+      () => MockClient((r) async {
+        final req = http.Request(r.method, r.url)..headers.addAll(r.headers);
+        if (r.body.isNotEmpty) {
+          req.body = r.body;
+        }
+        recordedRequests.add(req);
+
+        if (r.method == 'PUT' && r.url.path.endsWith('/rename')) {
+          return http.Response(jsonEncode({'status': 'ok'}), 200);
+        }
+        if (r.method == 'POST' && r.url.path.endsWith('/share')) {
+          return http.Response(
+            jsonEncode({
+              'token': 'mock-share-token',
+              'url': 'http://localhost:8080/api/v1/share/mock-share-token',
+            }),
+            200,
+          );
+        }
+        if (r.method == 'DELETE') {
+          return http.Response(jsonEncode({'status': 'ok'}), 200);
+        }
+        return http.Response('Not Found', 404);
+      }),
+    );
+  });
 }

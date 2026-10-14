@@ -66,8 +66,13 @@ func Open(ctx context.Context, cfg config.Config) (*sql.DB, *minio.Client, error
 		return nil, nil, err
 	}
 	exists, err := objects.BucketExists(ctx, cfg.MinIOBucket)
-	if err != nil || !exists {
-		return nil, nil, errors.New("MinIO bucket unavailable; check S3 API endpoint and create private bucket")
+	if err != nil {
+		return nil, nil, errors.New("MinIO connection failed: " + err.Error())
+	}
+	if !exists {
+		if err := objects.MakeBucket(ctx, cfg.MinIOBucket, minio.MakeBucketOptions{}); err != nil {
+			return nil, nil, errors.New("MinIO bucket creation failed: " + err.Error())
+		}
 	}
 	ok = true
 	return db, objects, nil

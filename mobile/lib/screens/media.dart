@@ -1,10 +1,11 @@
-import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:printing/printing.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
 import '../data/models.dart';
@@ -50,7 +51,7 @@ Future<void> importMedia(
       bytes = await result.readAsBytes();
       filename = result.name;
     }
-    final attachment = await store.vault.addAttachment(bytes);
+    final attachment = await store.vault.addAttachment(bytes, filename: filename);
     if (!context.mounted) {
       return;
     }
@@ -105,7 +106,11 @@ Future<void> previewMedia(
     }
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => MediaPreview(record: record, bytes: bytes),
+        builder: (_) => MediaPreview(
+          record: record,
+          bytes: bytes,
+          store: store,
+        ),
       ),
     );
   });
@@ -114,7 +119,13 @@ Future<void> previewMedia(
 class MediaPreview extends StatefulWidget {
   final CareRecord record;
   final Uint8List bytes;
-  const MediaPreview({super.key, required this.record, required this.bytes});
+  final CareStore? store;
+  const MediaPreview({
+    super.key,
+    required this.record,
+    required this.bytes,
+    this.store,
+  });
   @override
   State<MediaPreview> createState() => _MediaPreviewState();
 }
@@ -125,10 +136,14 @@ class _MediaPreviewState extends State<MediaPreview> {
   Future<void> Function()? clean;
   bool playing = false;
   String? error;
+  late String currentTitle;
   String get ext => widget.record.text('extension');
+  String get attachmentId => widget.record.text('attachment');
+
   @override
   void initState() {
     super.initState();
+    currentTitle = widget.record.text('title', '文件预览');
     if (['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi'].contains(ext)) {
       prepareVideo();
     }
@@ -155,7 +170,7 @@ class _MediaPreviewState extends State<MediaPreview> {
       }
     } catch (_) {
       if (mounted) {
-        setState(() => error = '当前设备无法预览此视频，文件仍已加密保存');
+        setState(() => error = '当前设备无法预览此视频，文件已安全保存');
       }
     }
   }
@@ -170,29 +185,168 @@ class _MediaPreviewState extends State<MediaPreview> {
     super.dispose();
   }
 
+  Future<void> download() async {
+    final filename = safeFileName(
+      currentTitle.isNotEmpty ? currentTitle : widget.record.text('filename', '文件.$ext'),
+    );
+    final path = await FilePicker.saveFile(
+      fileName: filename,
+      bytes: widget.bytes,
+    );
+    if (mounted) {
+      toast(context, path == null ? '已取消保存' : '文件已保存到本地：$filename');
+    }
+  }
+
+  Future<void> rename() async {
+    if (widget.store == null) return;
+    final c = TextEditingController(text: currentTitle);
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('修改文件名称'),
+        content: TextField(
+          controller: c,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: '文件名称'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final t = c.text.trim();
+              if (t.isNotEmpty) Navigator.pop(ctx, t);
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (newName != null && newName.isNotEmpty && newName != currentTitle) {
+      await widget.store!.renameAttachment(attachmentId, newName);
+      setState(() => currentTitle = newName);
+      if (mounted) toast(context, '文件名称已修改为 $newName');
+    }
+  }
+
+  Future<void> share() async {
+    if (widget.store == null) return;
+    try {
+      final url = await widget.store!.shareAttachment(attachmentId);
+      if (!mounted) return;
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('公开分享链接'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '任何人打开此链接，均可在手机或电脑浏览器中直接预览和下载该文件：',
+                style: TextStyle(fontSize: 13, height: 1.5),
+              ),
+              const SizedBox(height: 12),
+              SelectableText(
+                url,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: pine,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: url));
+                toast(context, '分享链接已复制到剪贴板');
+                Navigator.pop(ctx);
+              },
+              child: const Text('复制链接'),
+            ),
+            FilledButton(
+              onPressed: () {
+                launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                Navigator.pop(ctx);
+              },
+              child: const Text('浏览器预览'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  Future<void> delete() async {
+    if (widget.store == null) return;
+    if (!await confirm(
+      context,
+      '删除此文件？',
+      '将从手机及云端存储（MinIO）中彻底删除源文件，释放存储空间。不可恢复。',
+      action: '彻底删除',
+    )) {
+      return;
+    }
+    await widget.store!.deleteAttachment(attachmentId);
+    await widget.store!.remove(widget.record);
+    if (mounted) {
+      toast(context, '文件及云端源文件已删除');
+      Navigator.pop(context);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: Text(widget.record.text('title')),
+      title: Text(currentTitle),
       actions: [
-        if (widget.record.kind == 'document')
+        IconButton(
+          tooltip: '下载保存到本地',
+          icon: const Icon(Icons.download_rounded),
+          onPressed: download,
+        ),
+        if (widget.store != null)
           IconButton(
-            tooltip: '导出这份病历',
-            onPressed: () => attempt(context, () async {
-              if (!await confirm(
-                context,
-                '导出未加密副本？',
-                '仅在需要交给医护时使用。导出的文件由你选择的位置或应用保管。',
-                action: '导出',
-              )) {
-                return;
-              }
-              await FilePicker.saveFile(
-                fileName: safeFileName(widget.record.text('filename')),
-                bytes: widget.bytes,
-              );
-            }),
-            icon: const Icon(Icons.ios_share),
+            tooltip: '分享公开链接',
+            icon: const Icon(Icons.share_rounded),
+            onPressed: share,
+          ),
+        if (widget.store != null)
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            onSelected: (val) {
+              if (val == 'rename') rename();
+              if (val == 'delete') delete();
+            },
+            itemBuilder: (_) => [
+              const PopupMenuItem(
+                value: 'rename',
+                child: Row(
+                  children: [
+                    Icon(Icons.edit_note_rounded, size: 18),
+                    SizedBox(width: 8),
+                    Text('修改名称'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'delete',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_outline_rounded, size: 18, color: Colors.red),
+                    SizedBox(width: 8),
+                    Text('删除源文件', style: TextStyle(color: Colors.red)),
+                  ],
+                ),
+              ),
+            ],
           ),
       ],
     ),

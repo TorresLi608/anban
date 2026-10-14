@@ -94,6 +94,10 @@ func (c *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		c.auth(w, r)
 		return
 	}
+	if strings.HasPrefix(r.URL.Path, "/api/v1/share/") {
+		c.publicShare(w, r)
+		return
+	}
 	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 	var user, username string
 	if token == r.Header.Get("Authorization") || !filePattern.MatchString(token) {

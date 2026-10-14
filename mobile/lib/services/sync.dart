@@ -61,6 +61,7 @@ class VaultSync {
     Stream<List<int>> source,
     String id, [
     String? password,
+    String? filename,
   ]) async {
     final parts = <String>[];
     var size = 0;
@@ -70,6 +71,7 @@ class VaultSync {
       final payload = {
         'file': base64Encode(bytes),
         'size': bytes.length,
+        if (filename != null && filename.isNotEmpty) 'filename': filename,
       };
       final response = check(
         await http
@@ -162,10 +164,11 @@ class VaultSync {
       final existing = identical(vault.remoteOwner, this)
           ? vault.remoteAttachments[id]
           : null;
+      final filename = await vault.attachmentName(id);
       files[id] =
           existing ??
           _staged[id] ??
-          await _upload(vault.attachmentStream(id), id, password);
+          await _upload(vault.attachmentStream(id), id, password, filename);
       _staged[id] = files[id]!;
     }
     final manifest = {
@@ -262,5 +265,44 @@ class VaultSync {
     vault.remoteAttachments.addAll(snapshot.files);
     vault.readRemote = (id, file) => readAttachment(id, file, password);
     revision = snapshot.revision;
+  }
+
+  Future<void> deleteAttachment(String id) async {
+    final response = await http
+        .delete(
+          url.replace(path: '/api/v1/files/$id'),
+          headers: headers,
+        )
+        .timeout(const Duration(seconds: 30));
+    if (response.statusCode != 404 && response.statusCode != 200) {
+      check(response);
+    }
+  }
+
+  Future<void> renameAttachment(String id, String newName) async {
+    final response = await http
+        .put(
+          url.replace(path: '/api/v1/files/$id/rename'),
+          headers: headers,
+          body: jsonEncode({'filename': newName}),
+        )
+        .timeout(const Duration(seconds: 30));
+    check(response);
+  }
+
+  Future<String> shareAttachment(String id) async {
+    final response = check(
+      await http
+          .post(
+            url.replace(path: '/api/v1/files/$id/share'),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 30)),
+    );
+    final shareUrl = response['url'] as String?;
+    if (shareUrl == null || shareUrl.isEmpty) {
+      throw StateError('生成分享链接失败');
+    }
+    return shareUrl;
   }
 }
