@@ -15,21 +15,12 @@ class Account {
   );
   static Map<String, dynamic>? current;
   static VaultSync? _api;
-  static String? _password;
   static const _secure = FlutterSecureStorage(
     iOptions: IOSOptions(
       accessibility: KeychainAccessibility.unlocked_this_device,
     ),
   );
   static const _sessionKey = 'anban-account';
-
-  static String _passwordKey(String base, String username) {
-    final identity = [
-      VaultSync(base, '').url.replace(path: '').toString(),
-      username.trim().toLowerCase(),
-    ];
-    return 'anban-encryption:${base64UrlEncode(utf8.encode(jsonEncode(identity)))}';
-  }
 
   static Future<bool> restore(CareStore store) async {
     final saved = await _secure.read(key: _sessionKey);
@@ -54,15 +45,8 @@ class Account {
       await _secure.delete(key: _sessionKey);
       return false;
     }
-    final encryptionPassword = await _secure.read(
-      key: _passwordKey(session['server'], session['username']),
-    );
-    if (encryptionPassword == null || encryptionPassword.runes.length < 6) {
-      await _secure.delete(key: _sessionKey);
-      return false;
-    }
     try {
-      await _connect(store, session, encryptionPassword);
+      await _connect(store, session);
       return true;
     } on VaultSyncException catch (e) {
       if (e.statusCode != 401) rethrow;
@@ -80,16 +64,9 @@ class Account {
     String base,
     String username,
     String password,
-    bool register,
-    String encryptionPassword,
-  ) async {
-    if (encryptionPassword.isEmpty && !register) {
-      encryptionPassword =
-          await _secure.read(key: _passwordKey(base, username)) ?? '';
-    }
-    if (encryptionPassword.runes.length < 6) {
-      throw const FormatException('请填写资料加密密码（至少 6 个字符），成功登录后此设备会记住');
-    }
+    bool register, [
+    String? encryptionPassword,
+  ]) async {
     final guest = VaultSync(base, '');
     final response = guest.check(
       await http
@@ -108,13 +85,12 @@ class Account {
     await _connect(store, {
       ...response,
       'server': guest.url.replace(path: '').toString(),
-    }, encryptionPassword);
+    });
   }
 
   static Future<void> _connect(
     CareStore store,
     Map<String, dynamic> session,
-    String encryptionPassword,
   ) async {
     final api = VaultSync(session['server'], session['token']);
     await store.exclusive(() async {
@@ -139,21 +115,14 @@ class Account {
         ].any((key) => configured[key]?.isNotEmpty != true)) {
           throw const FormatException('健康选项配置不完整');
         }
-        final remote = await api.pull(encryptionPassword, allowEmpty: true);
-        await api.loadInto(vault, remote, encryptionPassword);
+        final remote = await api.pull(null, true);
+        await api.loadInto(vault, remote);
         final data = remote.data;
-        // Persist only after cloud data has been successfully decrypted.
-        await _secure.write(
-          key: _passwordKey(session['server'], session['username']),
-          value: encryptionPassword,
-        );
         await _secure.write(key: _sessionKey, value: jsonEncode(session));
         current = session;
         _api = api;
-        _password = encryptionPassword;
         store.healthOptions = configured;
-        store.publish = (data, vault) =>
-            api.save(data, vault, encryptionPassword);
+        store.publish = (data, vault) => api.save(data, vault);
         await store.replaceVault(vault, data);
       } catch (_) {
         await vault.close();
@@ -163,11 +132,11 @@ class Account {
   }
 
   static Future<void> refresh(CareStore store) => store.exclusive(() async {
-    if (_api == null || _password == null) throw StateError('请先登录');
-    final remote = await _api!.pull(_password!, allowEmpty: true);
+    if (_api == null) throw StateError('请先登录');
+    final remote = await _api!.pull(null, true);
     final vault = await LocalVault.memory();
     try {
-      await _api!.loadInto(vault, remote, _password!);
+      await _api!.loadInto(vault, remote);
       await store.replaceVault(vault, remote.data);
     } catch (_) {
       await vault.close();
@@ -190,7 +159,6 @@ class Account {
     final vault = await LocalVault.memory();
     current = null;
     _api = null;
-    _password = null;
     store.publish = (_, _) async => throw StateError('请先登录');
     await store.replaceVault(vault, CareData());
   });

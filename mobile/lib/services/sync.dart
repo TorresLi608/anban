@@ -59,33 +59,24 @@ class VaultSync {
 
   Future<RemoteAttachment> _upload(
     Stream<List<int>> source,
-    String id,
-    String password,
-  ) async {
-    final salt = randomBytes(16);
-    final key = await passwordKey(password, salt);
+    String id, [
+    String? password,
+  ]) async {
     final parts = <String>[];
     var size = 0;
     await for (final bytes in attachmentChunks(source)) {
       size += bytes.length;
       if (size > maxAttachmentBytes) throw StateError('单个文件最多 200 MB');
-      final encrypted = {
-        'version': 1,
-        'algorithm': 'AES-256-GCM',
-        'iterations': 210000,
-        'salt': base64Encode(salt),
-        ...await encryptBytes(
-          bytes,
-          key,
-          aad: utf8.encode('$id:${parts.length}'),
-        ),
+      final payload = {
+        'file': base64Encode(bytes),
+        'size': bytes.length,
       };
       final response = check(
         await http
             .post(
               url.replace(path: '/api/v1/files'),
               headers: headers,
-              body: jsonEncode(encrypted),
+              body: jsonEncode(payload),
             )
             .timeout(const Duration(seconds: 120)),
       );
@@ -96,17 +87,14 @@ class VaultSync {
       parts.add(remote);
     }
     if (size == 0) throw const FormatException('不能保存空附件');
-    return RemoteAttachment(parts, size: size, salt: base64Encode(salt));
+    return RemoteAttachment(parts, size: size);
   }
 
   Stream<List<int>> readAttachment(
     String id,
-    RemoteAttachment file,
-    String password,
-  ) async* {
-    final key = file.legacy
-        ? null
-        : await passwordKey(password, base64Decode(file.salt!));
+    RemoteAttachment file, [
+    String? password,
+  ]) async* {
     var total = 0;
     for (var i = 0; i < file.parts.length; i++) {
       final response = check(
@@ -118,21 +106,30 @@ class VaultSync {
             .timeout(const Duration(seconds: 120)),
       );
       final Uint8List bytes;
-      if (file.legacy) {
-        final value = await openBackup(response, password);
-        bytes = base64Decode(value['file'] as String);
-      } else {
-        if (response['salt'] != file.salt ||
-            response['version'] != 1 ||
-            response['algorithm'] != 'AES-256-GCM' ||
-            response['iterations'] != 210000) {
-          throw const FormatException('附件加密信息无效');
+      if (response.containsKey('file')) {
+        bytes = base64Decode(response['file'] as String);
+      } else if (response.containsKey('ciphertext')) {
+        // 兼容旧加密分块与旧版单文件载荷
+        if (file.legacy || response.containsKey('salt')) {
+          final value = await openBackup(response, password ?? '');
+          if (value.containsKey('file')) {
+            bytes = base64Decode(value['file'] as String);
+          } else {
+            bytes = Uint8List.fromList(utf8.encode(jsonEncode(value)));
+          }
+        } else {
+          final key = (file.salt != null && password != null)
+              ? await passwordKey(password, base64Decode(file.salt!))
+              : null;
+          if (key == null) throw const FormatException('附件为加密数据，缺少解密密码');
+          bytes = await decryptBytes(response, key, aad: utf8.encode('$id:$i'));
+          final expected = i == file.parts.length - 1
+              ? file.size! - i * attachmentChunkBytes
+              : attachmentChunkBytes;
+          if (bytes.length != expected) throw const FormatException('附件分块长度不完整');
         }
-        bytes = await decryptBytes(response, key!, aad: utf8.encode('$id:$i'));
-        final expected = i == file.parts.length - 1
-            ? file.size! - i * attachmentChunkBytes
-            : attachmentChunkBytes;
-        if (bytes.length != expected) throw const FormatException('附件分块长度不完整');
+      } else {
+        throw const FormatException('未知附件格式');
       }
       total += bytes.length;
       if (total > maxAttachmentBytes) {
@@ -144,9 +141,9 @@ class VaultSync {
 
   Future<Uint8List> _readBytes(
     String id,
-    RemoteAttachment file,
-    String password,
-  ) async {
+    RemoteAttachment file, [
+    String? password,
+  ]) async {
     final result = BytesBuilder(copy: false);
     await for (final bytes in readAttachment(id, file, password)) {
       result.add(bytes);
@@ -154,7 +151,7 @@ class VaultSync {
     return result.takeBytes();
   }
 
-  Future<void> save(CareData data, LocalVault vault, String password) async {
+  Future<void> save(CareData data, LocalVault vault, [String? password]) async {
     if (!identical(_stagedSource, vault)) {
       _staged.clear();
       _stagedSource = vault;
@@ -191,13 +188,12 @@ class VaultSync {
       final reference = await _upload(Stream.value(bytes), id, password);
       payload = {'manifestId': id, 'manifest': reference.toJson()};
     }
-    final encrypted = await sealBackup(payload, password);
     final response = check(
       await http
           .put(
             url,
             headers: {...headers, 'If-Match': '"$revision"'},
-            body: jsonEncode(encrypted),
+            body: jsonEncode(payload),
           )
           .timeout(const Duration(seconds: 60)),
     );
@@ -213,7 +209,7 @@ class VaultSync {
   }
 
   Future<({CareData data, int revision, Map<String, RemoteAttachment> files})>
-  pull(String password, {bool allowEmpty = false}) async {
+  pull([String? password, bool allowEmpty = false]) async {
     final response = check(
       await http
           .get(url, headers: headers)
@@ -227,10 +223,11 @@ class VaultSync {
         files: <String, RemoteAttachment>{},
       );
     }
-    var decrypted = await openBackup(
-      Map<String, dynamic>.from(response['data']),
-      password,
-    );
+    var decrypted = Map<String, dynamic>.from(response['data'] as Map);
+    // 兼容旧版加密资料
+    if (decrypted.containsKey('ciphertext')) {
+      decrypted = await openBackup(decrypted, password ?? '');
+    }
     if (decrypted['manifest'] != null) {
       final id = decrypted['manifestId'];
       if (id is! String || id.length > 100) {
@@ -257,9 +254,9 @@ class VaultSync {
   Future<void> loadInto(
     LocalVault vault,
     ({CareData data, int revision, Map<String, RemoteAttachment> files})
-    snapshot,
-    String password,
-  ) async {
+    snapshot, [
+    String? password,
+  ]) async {
     await vault.save(snapshot.data);
     vault.remoteOwner = this;
     vault.remoteAttachments.addAll(snapshot.files);

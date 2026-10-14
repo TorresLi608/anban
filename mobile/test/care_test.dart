@@ -61,10 +61,10 @@ void main() {
     );
   });
   test(
-    'encrypted persistence, concurrent duplicate prevention and atomic restore',
+    'local persistence, concurrent duplicate prevention and atomic restore',
     () async {
       final db = await databaseFactoryMemory.openDatabase('test-vault');
-      final vault = LocalVault(db, SecretKey(List.filled(32, 7)));
+      final vault = LocalVault(db);
       final store = CareStore(vault, CareData());
       final med = medication();
       await store.put(med);
@@ -79,7 +79,7 @@ void main() {
           .store('vault')
           .record('state')
           .get(db);
-      expect(jsonEncode(raw), isNot(contains(med.text('name'))));
+      expect(jsonEncode(raw), contains(med.text('name')));
       final file = await vault.addAttachment(Uint8List.fromList([1, 2, 3, 4]));
       await store.put(
         CareRecord(
@@ -104,20 +104,41 @@ void main() {
     },
   );
   test(
-    'backup rejects wrong password and authenticated ciphertext tampering',
+    'plain backup restores correctly and legacy encrypted backups remain supported',
     () async {
+      // 1. 明文备份与还原
+      final payload = {
+        'data': CareData(profile: {'name': '测试患者'}).toJson(),
+        'files': {'file1': base64Encode([1, 2, 3])},
+      };
+      final plain = await sealBackup(payload);
+      expect(plain['version'], 2);
+      expect(plain['algorithm'], 'PLAIN');
+      final opened = await openBackup(plain);
+      expect(opened['data']['profile']['name'], '测试患者');
+
+      // 2. 兼容旧版 AES-256-GCM 加密备份
       const password = 'a-long-backup-password';
-      final encrypted = await sealBackup({
-        'data': CareData().toJson(),
-        'files': {},
-      }, password);
-      expect((await openBackup(encrypted, password))['data']['version'], 2);
+      final salt = randomBytes(16);
+      final key = await passwordKey(password, salt);
+      final encryptedBytes = await encryptBytes(
+        utf8.encode(jsonEncode(payload)),
+        key,
+      );
+      final legacy = {
+        'version': 1,
+        'algorithm': 'AES-256-GCM',
+        'iterations': 210000,
+        'salt': base64Encode(salt),
+        ...encryptedBytes,
+      };
+      expect((await openBackup(legacy, password))['data']['profile']['name'], '测试患者');
       await expectLater(
-        openBackup(encrypted, 'a-wrong-long-password'),
+        openBackup(legacy, 'a-wrong-long-password'),
         throwsA(isA<SecretBoxAuthenticationError>()),
       );
       final changed = {
-        ...encrypted,
+        ...legacy,
         'ciphertext': base64Encode([1, 2, 3]),
       };
       await expectLater(
@@ -130,14 +151,14 @@ void main() {
     'switching accounts isolates records and encrypted attachments',
     () async {
       final firstDb = await databaseFactoryMemory.openDatabase('account-a');
-      final first = LocalVault(firstDb, SecretKey(List.filled(32, 1)));
+      final first = LocalVault(firstDb);
       final store = CareStore(first, CareData());
       await store.put(medication());
       final attachment = await first.addAttachment(
         Uint8List.fromList([1, 2, 3]),
       );
       final secondDb = await databaseFactoryMemory.openDatabase('account-b');
-      final second = LocalVault(secondDb, SecretKey(List.filled(32, 2)));
+      final second = LocalVault(secondDb);
       await store.switchVault(second, await second.load());
       expect(store.data.records, isEmpty);
       await expectLater(store.vault.attachment(attachment), throwsStateError);
@@ -146,7 +167,6 @@ void main() {
       await secondDb.close();
       final reopened = LocalVault(
         await databaseFactoryMemory.openDatabase('account-a'),
-        SecretKey(List.filled(32, 1)),
       );
       expect((await reopened.load()).records, hasLength(1));
       expect(await reopened.attachment(attachment), [1, 2, 3]);
@@ -154,15 +174,6 @@ void main() {
       store.dispose();
     },
   );
-  test('six-character encryption passwords work, shorter ones fail', () async {
-    for (final password in ['abc123', '中文密码六个']) {
-      final sealed = await sealBackup({'value': 'test'}, password);
-      expect((await openBackup(sealed, password))['value'], 'test');
-    }
-    for (final password in ['12345', '密码太短']) {
-      await expectLater(sealBackup({}, password), throwsFormatException);
-    }
-  });
   test('Chinese PDF is generated locally', () async {
     final pdf = await medicalPdf(
       CareData(
@@ -174,7 +185,7 @@ void main() {
     expect(ascii.decode(pdf.take(4).toList()), '%PDF');
     expect(pdf.length, greaterThan(1000));
   });
-  testWidgets('cloud app requires login and shows encryption password input', (
+  testWidgets('cloud app requires login and shows simplified login dialog', (
     tester,
   ) async {
     final vault = (await tester.runAsync(LocalVault.memory))!;
@@ -187,7 +198,8 @@ void main() {
     await tester.tap(find.text('登录 / 注册'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
-    expect(find.text('资料加密密码（至少 6 个字符）'), findsOneWidget);
+    expect(find.text('登录密码（至少 6 个字符）'), findsOneWidget);
+    expect(find.text('资料加密密码（至少 6 个字符）'), findsNothing);
     expect(find.text('后端服务地址'), findsNothing);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());

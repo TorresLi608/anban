@@ -5,7 +5,6 @@ import 'package:anban/data/models.dart';
 import 'package:anban/data/store.dart';
 import 'package:anban/data/vault.dart';
 import 'package:anban/services/sync.dart';
-import 'package:cryptography/cryptography.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -15,8 +14,7 @@ void main() {
     final source = await LocalVault.memory();
     final store = CareStore(source, CareData());
     final api = VaultSync('http://localhost:8080', 'session-token');
-    const password = 'separate-backup-password';
-    store.publish = (data, vault) => api.save(data, vault, password);
+    store.publish = (data, vault) => api.save(data, vault);
     final ids = <String>[];
     for (var i = 0; i < 9; i++) {
       ids.add(await source.addAttachment(Uint8List.fromList([3, 1, 4, 1, 5])));
@@ -41,10 +39,7 @@ void main() {
         );
         await store.profile({'name': '患者'});
         await store.settings({'largeText': 'true', 'token': 'legacy-token'});
-        final decoded = await openBackup(
-          Map<String, dynamic>.from(saved),
-          password,
-        );
+        final decoded = Map<String, dynamic>.from(saved as Map);
         expect(decoded['data']['settings'], {'largeText': 'true'});
         expect(decoded['data']['profile']['name'], '患者');
         expect(
@@ -68,19 +63,14 @@ void main() {
         expect(await store.vault.attachment(id), [3, 1, 4, 1, 5]);
         failWrite = false;
         await store.restore(replacement);
-        final pulled = await api.pull(password);
+        final pulled = await api.pull();
         final target = await LocalVault.memory();
-        await api.loadInto(target, pulled, password);
+        await api.loadInto(target, pulled);
         expect((await target.load()).profile['name'], '患者');
-        expect(await target.attachment(id), [9, 8, 7]);
-        await expectLater(
-          api.pull('incorrect-password'),
-          throwsA(isA<SecretBoxAuthenticationError>()),
-        );
         expect(await target.attachment(id), [9, 8, 7]);
         await target.close();
         await store.clear();
-        expect((await api.pull(password)).data.records, isEmpty);
+        expect((await api.pull()).data.records, isEmpty);
       },
       () => MockClient((request) async {
         expect(request.headers['authorization'], 'Bearer session-token');
@@ -104,9 +94,10 @@ void main() {
           saved = jsonDecode(request.body);
           return http.Response(jsonEncode({'revision': revision}), 200);
         }
-        return http.Response(
-          jsonEncode({'revision': revision, 'data': saved}),
+        return http.Response.bytes(
+          utf8.encode(jsonEncode({'revision': revision, 'data': saved})),
           200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
         );
       }),
     );

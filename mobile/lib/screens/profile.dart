@@ -149,7 +149,7 @@ class _ProfilePageState extends State<ProfilePage> {
     final value = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(creating ? '设置备份密码' : '输入备份密码'),
+        title: const Text('输入旧版备份密码'),
         content: Form(
           key: key,
           child: Column(
@@ -157,7 +157,7 @@ class _ProfilePageState extends State<ProfilePage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                '密码仅用于本机加解密，不会发送到服务器。请妥善保存，遗失后无法恢复。',
+                '该文件属于旧版加密备份，需要原密码解密。',
                 style: TextStyle(fontSize: 13, height: 1.6),
               ),
               const SizedBox(height: 18),
@@ -193,18 +193,14 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> backup() async {
-    final secret = await password(creating: true);
-    if (secret == null) {
-      return;
-    }
     final backup = await widget.store.vault.backup(widget.store.data);
-    final envelope = await sealBackup(backup, secret);
+    final envelope = await sealBackup(backup);
     final path = await FilePicker.saveFile(
       fileName: '安伴-${dayKey(DateTime.now())}.anban',
       bytes: Uint8List.fromList(utf8.encode(jsonEncode(envelope))),
     );
     if (mounted) {
-      toast(context, path == null ? '已关闭保存窗口；请确认下载或保存结果' : '加密备份已保存');
+      toast(context, path == null ? '已关闭保存窗口；请确认下载或保存结果' : '资料备份已导出');
     }
   }
 
@@ -220,27 +216,30 @@ class _ProfilePageState extends State<ProfilePage> {
     if (!mounted) {
       return;
     }
-    final secret = await password();
-    if (secret == null) {
-      return;
+    final raw = Map<String, dynamic>.from(jsonDecode(utf8.decode(bytes)) as Map);
+    Map<String, dynamic> backup;
+    if (raw.containsKey('ciphertext') || raw['version'] == 1) {
+      final secret = await password();
+      if (secret == null) {
+        return;
+      }
+      backup = await openBackup(raw, secret);
+    } else {
+      backup = await openBackup(raw);
     }
-    final backup = await openBackup(
-      Map<String, dynamic>.from(jsonDecode(utf8.decode(bytes))),
-      secret,
-    );
     final restored = CareData.fromJson(backup['data']);
     if (!mounted ||
         !await confirm(
           context,
           '恢复 ${restored.records.length} 条记录？',
-          '将上传并替换当前账号云端资料与附件。建议先导出当前资料备份。密码或文件错误时不会覆盖现有数据。',
+          '将上传并替换当前账号云端资料与附件。建议先导出当前资料备份。文件错误时不会覆盖现有数据。',
           action: '替换并恢复',
         )) {
       return;
     }
     await widget.store.restore(backup);
     if (mounted) {
-      toast(context, '加密备份已恢复');
+      toast(context, '资料备份已恢复');
     }
   }
 
@@ -248,7 +247,6 @@ class _ProfilePageState extends State<ProfilePage> {
     final username = TextEditingController();
     final secret = TextEditingController();
     final repeat = TextEditingController();
-    final encryption = TextEditingController();
     final key = GlobalKey<FormState>();
     bool register = false;
     final result = await showDialog<bool>(
@@ -265,7 +263,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Note(
-                      '登录后自动读取云端资料，此设备会安全记住登录状态和资料加密密码。首次登录请填写原资料密码；新账号请设置新密码，遗失无法恢复。',
+                      '登录后自动同步云端资料与附件，此设备会保持登录状态。',
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
@@ -295,22 +293,6 @@ class _ProfilePageState extends State<ProfilePage> {
                             ? null
                             : '密码至少 6 个字符，最多 72 字节';
                       },
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: encryption,
-                      obscureText: true,
-                      autocorrect: false,
-                      enableSuggestions: false,
-                      decoration: InputDecoration(
-                        labelText: '资料加密密码（至少 6 个字符）',
-                        helperText: register ? '设置用于加密云端资料的密码' : '此设备已记住时可留空',
-                      ),
-                      validator: (v) => !register && (v?.isEmpty ?? true)
-                          ? null
-                          : (v?.runes.length ?? 0) < 6
-                          ? '请输入原备份密码；新账号请设置新密码'
-                          : null,
                     ),
                     if (register) ...[
                       const SizedBox(height: 16),
@@ -354,7 +336,6 @@ class _ProfilePageState extends State<ProfilePage> {
         username.text.trim(),
         secret.text,
         register,
-        encryption.text,
       );
       if (mounted) toast(context, '已登录 ${Account.current!['username']}');
     }

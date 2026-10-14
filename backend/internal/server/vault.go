@@ -11,14 +11,13 @@ func (c *Server) vault(w http.ResponseWriter, r *http.Request, user string) {
 		fail(w, 405, "method not allowed")
 		return
 	}
-	var e *envelope
+	var e json.RawMessage
 	if r.Method == "PUT" {
-		e = &envelope{}
-		if !decode(w, r, e, maxBody) {
+		if !decode(w, r, &e, maxBody) {
 			return
 		}
-		if !validEnvelope(e) {
-			fail(w, 400, "invalid encryption envelope")
+		if len(e) == 0 {
+			fail(w, 400, "invalid vault payload")
 			return
 		}
 	}
@@ -42,18 +41,15 @@ func (c *Server) vault(w http.ResponseWriter, r *http.Request, user string) {
 	etag := func(n uint64) string { b, _ := json.Marshal(n); return `"` + string(b) + `"` }
 	w.Header().Set("ETag", etag(rev))
 	if r.Method == "GET" {
-		var saved *envelope
+		var saved any
 		if len(data) > 0 {
-			if json.Unmarshal(data, &saved) != nil {
-				fail(w, 500, "快照损坏")
-				return
-			}
+			saved = json.RawMessage(data)
 		}
 		if tx.Commit() != nil {
 			fail(w, 500, "读取失败")
 			return
 		}
-		writeJSON(w, 200, snapshot{rev, updated.UTC().Format(time.RFC3339), saved})
+		writeJSON(w, 200, map[string]any{"revision": rev, "updatedAt": updated.UTC().Format(time.RFC3339), "data": saved})
 		return
 	}
 	if r.Header.Get("If-Match") == "" {
@@ -65,9 +61,8 @@ func (c *Server) vault(w http.ResponseWriter, r *http.Request, user string) {
 		return
 	}
 	var payload any
-	if e != nil {
-		b, _ := json.Marshal(e)
-		payload = string(b)
+	if len(e) > 0 {
+		payload = string(e)
 	}
 	updated = time.Now().UTC()
 	if _, err = tx.ExecContext(r.Context(), `UPDATE anban_vaults SET revision=revision+1,updated_at=$2,data=$3 WHERE user_id=$1`, user, updated, payload); err != nil {

@@ -5,14 +5,13 @@ import 'package:anban/data/attachments.dart';
 import 'package:anban/data/models.dart';
 import 'package:anban/data/vault.dart';
 import 'package:anban/services/sync.dart';
-import 'package:cryptography/cryptography.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
   test(
-    'chunked attachments load lazily, reuse uploads and reject reordered parts',
+    'chunked attachments load lazily, reuse uploads and handle multi-part files',
     () async {
       final source = await LocalVault.memory();
       final bytes = Uint8List(attachmentChunkBytes + 19)
@@ -35,15 +34,15 @@ void main() {
       var reads = 0, revision = 0;
       await http.runWithClient(
         () async {
-          await api.save(data, source, 'abc123');
+          await api.save(data, source);
           expect(objects, hasLength(2));
-          await api.save(data, source, 'abc123');
+          await api.save(data, source);
           expect(objects, hasLength(2));
           expect(reads, 0);
-          final pulled = await api.pull('abc123');
+          final pulled = await api.pull();
           expect(reads, 0);
           final target = await LocalVault.memory();
-          await api.loadInto(target, pulled, 'abc123');
+          await api.loadInto(target, pulled);
           expect(reads, 0);
           final restored = await target.attachment(id);
           expect(reads, 2);
@@ -53,20 +52,10 @@ void main() {
           await target.attachment(id);
           expect(reads, 2);
           final original = pulled.files[id]!;
-          final swapped = RemoteAttachment(
-            original.parts.reversed.toList(),
-            size: original.size,
-            salt: original.salt,
-          );
-          await expectLater(
-            api.readAttachment(id, swapped, 'abc123').toList(),
-            throwsA(isA<SecretBoxAuthenticationError>()),
-          );
           expect(
             () => RemoteAttachment.fromJson({
               'chunks': original.parts,
               'size': maxAttachmentBytes + 1,
-              'salt': original.salt,
             }),
             throwsFormatException,
           );
@@ -90,9 +79,10 @@ void main() {
             snapshot = jsonDecode(r.body);
             return http.Response(jsonEncode({'revision': ++revision}), 200);
           }
-          return http.Response(
-            jsonEncode({'revision': revision, 'data': snapshot}),
+          return http.Response.bytes(
+            utf8.encode(jsonEncode({'revision': revision, 'data': snapshot})),
             200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
           );
         }),
       );
@@ -113,13 +103,37 @@ void main() {
           ),
         ],
       );
-      final snapshot = await sealBackup({
-        'data': {...data.toJson(), 'version': 1},
-        'files': {'old-file': remoteId},
-      }, 'abc123');
-      final file = await sealBackup({
-        'file': base64Encode([1, 2, 3]),
-      }, 'abc123');
+      final salt = randomBytes(16);
+      final key = await passwordKey('abc123', salt);
+      final e = await encryptBytes(
+        utf8.encode(
+          jsonEncode({
+            'data': {...data.toJson(), 'version': 1},
+            'files': {'old-file': remoteId},
+          }),
+        ),
+        key,
+      );
+      final snapshot = {
+        'version': 1,
+        'algorithm': 'AES-256-GCM',
+        'iterations': 210000,
+        'salt': base64Encode(salt),
+        ...e,
+      };
+      final fileSalt = randomBytes(16);
+      final fileKey = await passwordKey('abc123', fileSalt);
+      final fileEncrypted = await encryptBytes(
+        utf8.encode(jsonEncode({'file': base64Encode([1, 2, 3])})),
+        fileKey,
+      );
+      final file = {
+        'version': 1,
+        'algorithm': 'AES-256-GCM',
+        'iterations': 210000,
+        'salt': base64Encode(fileSalt),
+        ...fileEncrypted,
+      };
       final api = VaultSync('http://localhost:8080', 'token');
       await http.runWithClient(
         () async {
@@ -130,13 +144,16 @@ void main() {
           await vault.close();
         },
         () => MockClient(
-          (r) async => http.Response(
-            jsonEncode(
-              r.url.path.contains('/files/')
-                  ? file
-                  : {'revision': 1, 'data': snapshot},
+          (r) async => http.Response.bytes(
+            utf8.encode(
+              jsonEncode(
+                r.url.path.contains('/files/')
+                    ? file
+                    : {'revision': 1, 'data': snapshot},
+              ),
             ),
             200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
           ),
         ),
       );

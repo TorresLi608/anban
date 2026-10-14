@@ -5,7 +5,6 @@ import 'package:anban/data/planning.dart';
 import 'package:anban/data/store.dart';
 import 'package:anban/data/vault.dart';
 import 'package:anban/services/account.dart';
-import 'package:cryptography/cryptography.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -14,11 +13,10 @@ import 'package:http/testing.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const secure = FlutterSecureStorage();
-  const encryptionPassword = 'cloud-secret';
   final token = 'a' * 64;
   final userId = 'b' * 64;
   late CareStore store;
-  late Map<String, dynamic> encrypted;
+  late Map<String, dynamic> cloudPayload;
   late List<String> requests;
   var status = 200;
 
@@ -26,10 +24,10 @@ void main() {
     FlutterSecureStorage.setMockInitialValues({});
     Account.current = null;
     store = CareStore(await LocalVault.memory(), CareData());
-    encrypted = await sealBackup({
+    cloudPayload = {
       'data': CareData(profile: {'name': '云端患者'}).toJson(),
       'files': <String, dynamic>{},
-    }, encryptionPassword);
+    };
     requests = [];
     status = 200;
   });
@@ -43,51 +41,69 @@ void main() {
     final path = request.url.path;
     requests.add(path);
     if (path == '/api/v1/auth/login') {
-      return http.Response(
-        jsonEncode({
-          'token': token,
-          'userId': userId,
-          'username': jsonDecode(
-            request.body,
-          )['username'].toString().toLowerCase(),
-          'expiresAt': DateTime.now()
-              .add(const Duration(days: 30))
-              .toIso8601String(),
-        }),
+      return http.Response.bytes(
+        utf8.encode(
+          jsonEncode({
+            'token': token,
+            'userId': userId,
+            'username': jsonDecode(
+              request.body,
+            )['username'].toString().toLowerCase(),
+            'expiresAt': DateTime.now()
+                .add(const Duration(days: 30))
+                .toIso8601String(),
+          }),
+        ),
         200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
       );
     }
     expect(request.headers['authorization'], 'Bearer $token');
     if (status != 200) {
-      return http.Response.bytes(utf8.encode('{"error":"暂不可用"}'), status);
+      return http.Response.bytes(
+        utf8.encode('{"error":"暂不可用"}'),
+        status,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
     }
     if (path == '/api/v1/config/health-options') {
       return http.Response.bytes(
         utf8.encode(jsonEncode(defaultHealthOptions)),
         200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
       );
     }
-    if (path == '/api/v1/auth/logout') return http.Response('{"ok":true}', 200);
+    if (path == '/api/v1/auth/logout') {
+      return http.Response.bytes(
+        utf8.encode('{"ok":true}'),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    }
     if (path == '/api/v1/vault') {
       if (request.method == 'PUT') {
-        encrypted = Map<String, dynamic>.from(jsonDecode(request.body));
-        return http.Response('{"revision":2}', 200);
+        cloudPayload = Map<String, dynamic>.from(jsonDecode(request.body));
+        return http.Response.bytes(
+          utf8.encode('{"revision":2}'),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
       }
-      return http.Response(jsonEncode({'data': encrypted, 'revision': 1}), 200);
+      return http.Response.bytes(
+        utf8.encode(jsonEncode({'data': cloudPayload, 'revision': 1})),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
     }
     throw StateError('Unexpected request: $path');
   });
 
-  Future<void> login({
-    String secret = encryptionPassword,
-    String username = 'patient',
-  }) => Account.login(
+  Future<void> login({String username = 'patient'}) => Account.login(
     store,
     Account.apiBase,
     username,
     'login-secret',
     false,
-    secret,
   );
 
   void check(String name, Future<void> Function() body) {
@@ -95,13 +111,12 @@ void main() {
   }
 
   check(
-    'restart restores session, decrypts cloud data and saves without login',
+    'restart restores session, loads cloud data and saves without login',
     () async {
       await login();
       expect(store.data.profile['name'], '云端患者');
       final saved = await secure.readAll();
       expect(saved.values.any((v) => v.contains('login-secret')), isFalse);
-      expect(saved.values.any((v) => v.contains('云端患者')), isFalse);
       await store.vault.close();
       store.dispose();
       store = CareStore(await LocalVault.memory(), CareData());
@@ -113,18 +128,12 @@ void main() {
       expect(store.data.profile['name'], '云端患者');
       expect(requests, isNot(contains('/api/v1/auth/login')));
       await store.profile({'name': '已修改'});
-      expect(
-        (await openBackup(
-          encrypted,
-          encryptionPassword,
-        ))['data']['profile']['name'],
-        '已修改',
-      );
+      expect(cloudPayload['data']['profile']['name'], '已修改');
     },
   );
 
   check(
-    'logout clears session but remembers encryption password for this account',
+    'logout clears session and resets local data',
     () async {
       await login();
       await Account.logout(store);
@@ -132,36 +141,7 @@ void main() {
       expect(await secure.read(key: 'anban-account'), isNull);
       expect(await Account.restore(store), isFalse);
       expect(store.data.profile, isEmpty);
-      await login(secret: '', username: 'PATIENT');
-      expect(store.data.profile['name'], '云端患者');
-      await expectLater(
-        login(secret: '', username: 'other_patient'),
-        throwsFormatException,
-      );
-      await expectLater(
-        Account.login(
-          store,
-          'https://other.example.com',
-          'patient',
-          'login-secret',
-          false,
-          '',
-        ),
-        throwsFormatException,
-      );
-    },
-  );
-
-  check(
-    'incorrect encryption password never replaces valid saved credentials',
-    () async {
-      await login();
-      final saved = await secure.readAll();
-      await expectLater(
-        login(secret: 'wrong-secret'),
-        throwsA(isA<SecretBoxAuthenticationError>()),
-      );
-      expect(await secure.readAll(), saved);
+      await login(username: 'PATIENT');
       expect(store.data.profile['name'], '云端患者');
     },
   );
@@ -177,14 +157,14 @@ void main() {
     expect(await Account.restore(store), isTrue);
   });
 
-  check('revoked and expired sessions return to login while retaining encryption password', () async {
+  check('revoked and expired sessions return to login', () async {
     await login();
     Account.current = null;
     status = 401;
     expect(await Account.restore(store), isFalse);
     expect(await secure.read(key: 'anban-account'), isNull);
     status = 200;
-    await login(secret: '');
+    await login();
     final session = jsonDecode((await secure.read(key: 'anban-account'))!);
     session['expiresAt'] = DateTime.now()
         .subtract(const Duration(seconds: 1))
@@ -194,7 +174,7 @@ void main() {
     requests.clear();
     expect(await Account.restore(store), isFalse);
     expect(requests, isEmpty);
-    await login(secret: '');
+    await login();
     expect(store.data.profile['name'], '云端患者');
   });
 }

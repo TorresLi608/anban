@@ -13,19 +13,17 @@ import (
 const maxFile = 40 << 20 // 20 MB attachment plus base64 and encryption envelope.
 func (c *Server) file(w http.ResponseWriter, r *http.Request, user string) {
 	if r.URL.Path == "/api/v1/files" && r.Method == "POST" {
-		var e envelope
-		if !decode(w, r, &e, maxFile) {
+		var payload json.RawMessage
+		if !decode(w, r, &payload, maxFile) {
 			return
 		}
-		// File envelopes use the same format with a larger ciphertext allowance.
-		if !validFileEnvelope(&e) {
-			fail(w, 400, "invalid encrypted file")
+		if len(payload) == 0 {
+			fail(w, 400, "invalid file payload")
 			return
 		}
-		b, _ := json.Marshal(e)
 		id := randomID()
 		key := user + "/" + id
-		if _, err := c.objects.PutObject(r.Context(), c.bucket, key, bytes.NewReader(b), int64(len(b)), minio.PutObjectOptions{ContentType: "application/octet-stream"}); err != nil {
+		if _, err := c.objects.PutObject(r.Context(), c.bucket, key, bytes.NewReader(payload), int64(len(payload)), minio.PutObjectOptions{ContentType: "application/json"}); err != nil {
 			fail(w, 502, "附件上传失败")
 			return
 		}

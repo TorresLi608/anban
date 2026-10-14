@@ -30,24 +30,26 @@ class RemoteAttachment {
   final String? salt;
   RemoteAttachment(this.parts, {this.size, this.salt});
   bool get legacy => salt == null;
-  dynamic toJson() =>
-      legacy ? parts.single : {'chunks': parts, 'size': size, 'salt': salt};
+  dynamic toJson() => {
+    'chunks': parts,
+    if (size != null) 'size': size,
+    if (salt != null) 'salt': salt,
+  };
   factory RemoteAttachment.fromJson(dynamic value) {
     final RemoteAttachment file;
     if (value is String) {
       file = RemoteAttachment([value]);
     } else if (value is Map &&
         value['chunks'] is List &&
-        value['size'] is int &&
-        value['salt'] is String) {
+        value['size'] is int) {
       file = RemoteAttachment(
         List<String>.from(value['chunks']),
-        size: value['size'],
-        salt: value['salt'],
+        size: value['size'] as int,
+        salt: value['salt'] as String?,
       );
       if (file.size! < 1 ||
           file.size! > maxAttachmentBytes ||
-          base64Decode(file.salt!).length != 16 ||
+          (file.salt != null && base64Decode(file.salt!).length != 16) ||
           file.parts.length !=
               (file.size! + attachmentChunkBytes - 1) ~/ attachmentChunkBytes) {
         throw const FormatException('远端附件信息无效');

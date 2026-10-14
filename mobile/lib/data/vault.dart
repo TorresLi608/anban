@@ -51,46 +51,53 @@ Future<SecretKey> passwordKey(String password, List<int> salt) => Pbkdf2(
   bits: 256,
 ).deriveKey(secretKey: SecretKey(utf8.encode(password)), nonce: salt);
 Future<Map<String, dynamic>> sealBackup(
-  Map<String, dynamic> data,
-  String password,
-) async {
-  if (password.runes.length < 6) {
-    throw const FormatException('备份密码至少 6 个字符');
-  }
-  final salt = randomBytes(16);
-  final e = await encryptBytes(
-    utf8.encode(jsonEncode(data)),
-    await passwordKey(password, salt),
-  );
+  Map<String, dynamic> data, [
+  String? password,
+]) async {
+  // 明文备份格式，不再强制使用加密
   return {
-    'version': 1,
-    'algorithm': 'AES-256-GCM',
-    'iterations': 210000,
-    'salt': base64Encode(salt),
-    ...e,
+    'version': 2,
+    'algorithm': 'PLAIN',
+    'data': data,
   };
 }
 
 Future<Map<String, dynamic>> openBackup(
-  Map<String, dynamic> e,
-  String password,
-) async {
-  if (e['version'] != 1 ||
-      e['algorithm'] != 'AES-256-GCM' ||
-      e['iterations'] != 210000 ||
-      base64Decode(e['salt']).length != 16) {
-    throw const FormatException('不支持的加密备份格式');
+  Map<String, dynamic> e, [
+  String? password,
+]) async {
+  // 明文备份直接解析
+  if (e['version'] == 2 || e['algorithm'] == 'PLAIN') {
+    if (e['data'] is Map) {
+      return Map<String, dynamic>.from(e['data'] as Map);
+    }
+    return e;
   }
-  final bytes = await decryptBytes(
-    e,
-    await passwordKey(password, base64Decode(e['salt'])),
-  );
-  return Map<String, dynamic>.from(jsonDecode(utf8.decode(bytes)) as Map);
+  // 兼容旧版加密备份
+  if (e['version'] == 1 || e['algorithm'] == 'AES-256-GCM') {
+    if (password == null || password.isEmpty) {
+      throw const FormatException('该备份为旧版加密备份，请输入密码');
+    }
+    if (e['iterations'] != 210000 ||
+        e['salt'] == null ||
+        base64Decode(e['salt'] as String).length != 16) {
+      throw const FormatException('不支持的加密备份格式');
+    }
+    final bytes = await decryptBytes(
+      e,
+      await passwordKey(password, base64Decode(e['salt'] as String)),
+    );
+    return Map<String, dynamic>.from(jsonDecode(utf8.decode(bytes)) as Map);
+  }
+  if (e['data'] is Map) {
+    return Map<String, dynamic>.from(e['data'] as Map);
+  }
+  return e;
 }
 
 class LocalVault {
   final Database db;
-  final SecretKey key;
+  final SecretKey? key;
   final _store = stringMapStoreFactory.store('vault');
   final bool ephemeral;
   final _cache = <String, Uint8List>{};
@@ -100,7 +107,7 @@ class LocalVault {
   Object? remoteOwner;
   final remoteAttachments = <String, RemoteAttachment>{};
   Stream<List<int>> Function(String, RemoteAttachment)? readRemote;
-  LocalVault(this.db, this.key, {this.ephemeral = false});
+  LocalVault(this.db, [this.key, this.ephemeral = false]);
   Future<void> close() async {
     _closed = true;
     _cache.clear();
@@ -113,8 +120,8 @@ class LocalVault {
 
   static Future<LocalVault> memory() async => LocalVault(
     await databaseFactoryMemory.openDatabase(newId()),
-    SecretKey(randomBytes(32)),
-    ephemeral: true,
+    null,
+    true,
   );
 
   // Only used to migrate data written by older app versions.
@@ -125,11 +132,8 @@ class LocalVault {
       ),
     );
     final key = await secure.read(key: 'anban-vault-key$scope');
-    if (key == null) {
-      throw StateError('没有可读取的旧版资料密钥。没有旧资料时无需迁移；如密钥丢失，请从加密备份恢复。');
-    }
     final db = await openDatabase(scope);
-    return LocalVault(db, SecretKey(base64Decode(key)));
+    return LocalVault(db, key != null ? SecretKey(base64Decode(key)) : null);
   }
 
   Future<CareData> load() async {
@@ -137,18 +141,19 @@ class LocalVault {
     if (e == null) {
       return CareData();
     }
-    return CareData.fromJson(
-      jsonDecode(utf8.decode(await decryptBytes(e, key))),
-    );
+    if (e.containsKey('ciphertext')) {
+      if (key != null) {
+        return CareData.fromJson(
+          jsonDecode(utf8.decode(await decryptBytes(e, key!))),
+        );
+      }
+      return CareData();
+    }
+    return CareData.fromJson(e);
   }
 
   Future<void> save(CareData data) async {
-    await _store
-        .record('state')
-        .put(
-          db,
-          await encryptBytes(utf8.encode(jsonEncode(data.toJson())), key),
-        );
+    await _store.record('state').put(db, data.toJson());
   }
 
   Future<String> addAttachment(Uint8List bytes) async {
@@ -164,9 +169,10 @@ class LocalVault {
         if (size > maxAttachmentBytes) {
           throw const FormatException('单个文件最多 200 MB');
         }
-        await _store
-            .record('file:$id:$count')
-            .put(db, await encryptBytes(bytes, key));
+        await _store.record('file:$id:$count').put(db, {
+          'bytes': base64Encode(bytes),
+          'size': bytes.length,
+        });
         count++;
       }
       if (size == 0) throw const FormatException('不能上传空文件');
@@ -237,10 +243,22 @@ class LocalVault {
       for (var i = 0; i < (e['chunks'] as int); i++) {
         final chunk = await _store.record('file:$id:$i').get(db);
         if (chunk == null) throw StateError('附件数据不完整');
-        yield await decryptBytes(chunk, key);
+        if (chunk.containsKey('ciphertext') && key != null) {
+          yield await decryptBytes(chunk, key!);
+        } else if (chunk.containsKey('bytes')) {
+          yield base64Decode(chunk['bytes'] as String);
+        } else {
+          throw StateError('附件格式不支持');
+        }
       }
     } else {
-      yield await decryptBytes(e, key);
+      if (e.containsKey('ciphertext') && key != null) {
+        yield await decryptBytes(e, key!);
+      } else if (e.containsKey('bytes')) {
+        yield base64Decode(e['bytes'] as String);
+      } else {
+        throw StateError('附件格式不支持');
+      }
     }
   }
 
@@ -266,12 +284,9 @@ class LocalVault {
 
   Future<CareData> restore(Map<String, dynamic> backup) async {
     final data = CareData.fromJson(backup['data']);
-    final files = Map<String, String>.from(backup['files'] as Map);
-    final encrypted = <String, Map<String, dynamic>>{};
+    final files = Map<String, String>.from(backup['files'] as Map? ?? {});
     for (final id in data.records.expand(attachmentIds).toSet()) {
-      if (id.isEmpty) {
-        continue;
-      }
+      if (id.isEmpty) continue;
       if (!files.containsKey(id)) {
         throw const FormatException('备份缺少附件，未恢复任何数据');
       }
@@ -279,17 +294,20 @@ class LocalVault {
       if (bytes.length > maxAttachmentBytes) {
         throw const FormatException('附件过大');
       }
-      encrypted[id] = await encryptBytes(bytes, key);
     }
-    final state = await encryptBytes(
-      utf8.encode(jsonEncode(data.toJson())),
-      key,
-    );
     await db.transaction((txn) async {
       await _store.delete(txn);
-      await _store.record('state').put(txn, state);
-      for (final e in encrypted.entries) {
-        await _store.record('file:${e.key}').put(txn, e.value);
+      await _store.record('state').put(txn, data.toJson());
+      for (final e in files.entries) {
+        final bytes = base64Decode(e.value);
+        await _store.record('file:${e.key}').put(txn, {
+          'chunks': 1,
+          'size': bytes.length,
+        });
+        await _store.record('file:${e.key}:0').put(txn, {
+          'bytes': e.value,
+          'size': bytes.length,
+        });
       }
     });
     remoteAttachments.clear();
