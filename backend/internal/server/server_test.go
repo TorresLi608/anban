@@ -77,6 +77,13 @@ func TestPushPlanValidation(t *testing.T) {
 	}
 }
 
+func TestPushTopicFitsNtfyLimit(t *testing.T) {
+	got := pushTopic(strings.Repeat("a", 64))
+	if got != "anban-"+strings.Repeat("a", 40) || len(got) != 46 {
+		t.Fatalf("unexpected topic %q (%d chars)", got, len(got))
+	}
+}
+
 func TestPublishNtfyUsesGenericAuthenticatedNotification(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/anban-user" || r.Header.Get("Authorization") != "Bearer publish-secret" || r.Header.Get("Click") != "anban://reminders" {

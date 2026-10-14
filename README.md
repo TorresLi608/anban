@@ -141,7 +141,7 @@ ntfy 使用 `.env` 中的 `ANBAN_NTFY_PUBLIC_URL`：本机联调填写 `http://1
 ```sh
 docker compose up -d ntfy
 docker compose exec ntfy ntfy user add anban-publisher
-docker compose exec ntfy ntfy access anban-publisher 'anban-*' write-only
+docker compose exec ntfy ntfy access anban-publisher 'anban-*' write
 docker compose exec ntfy ntfy token add --label=anban-backend anban-publisher
 docker compose exec ntfy ntfy token list anban-publisher
 ```
@@ -152,7 +152,7 @@ docker compose exec ntfy ntfy token list anban-publisher
 
 ```sh
 docker compose exec ntfy ntfy user add anban-phone
-docker compose exec ntfy ntfy access anban-phone 'anban-你的完整主题ID' read-only
+docker compose exec ntfy ntfy access anban-phone 'anban-你的完整主题ID（App显示的46字符主题）' ro
 ```
 
 在手机 ntfy 客户端添加自建服务器、上述只读账号密码并订阅主题，再开启安伴的 ntfy 后端提醒、保存设置并点击后端定时测试。不同安伴账号应分配不同 ntfy 只读账号及对应主题权限。真机的 `127.0.0.1` 指手机自身，本机联调时手机订阅地址应使用电脑的局域网 IP；公网 HTTP 会明文传输认证信息，可将同一 URL 配置换成 HTTPS 反向代理域名。

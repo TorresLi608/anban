@@ -29,6 +29,16 @@ type pushPlan struct {
 var pushKey = regexp.MustCompile(`^[a-zA-Z0-9:_-]{1,100}$`)
 var dailyTime = regexp.MustCompile(`^([01][0-9]|2[0-3]):[0-5][0-9]$`)
 
+// ntfy topic names are limited in length. The first 40 hex characters still
+// provide 160 bits of per-account namespace while keeping the public topic
+// below that limit.
+func pushTopic(user string) string {
+	if len(user) > 40 {
+		user = user[:40]
+	}
+	return "anban-" + user
+}
+
 func validatePushPlan(p pushPlan, now time.Time) error {
 	zone, err := time.LoadLocation(p.TimeZone)
 	if err != nil || len(p.Jobs) > 450 || (!p.Enabled && len(p.Jobs) != 0) {
@@ -77,7 +87,7 @@ func (c *Server) remoteReminders(w http.ResponseWriter, r *http.Request, user st
 			fail(w, 503, "无法安排后端测试")
 			return
 		}
-		writeJSON(w, 200, map[string]any{"at": at, "topic": "anban-" + user, "server": c.ntfyPublicURL})
+		writeJSON(w, 200, map[string]any{"at": at, "topic": pushTopic(user), "server": c.ntfyPublicURL})
 		return
 	}
 	if r.Method == "GET" {
@@ -98,7 +108,7 @@ func (c *Server) remoteReminders(w http.ResponseWriter, r *http.Request, user st
 		if success.Valid {
 			sent = success.Time
 		}
-		writeJSON(w, 200, map[string]any{"enabled": enabled, "topic": "anban-" + user, "server": c.ntfyPublicURL, "pending": count, "lastSuccess": sent, "lastError": lastError})
+		writeJSON(w, 200, map[string]any{"enabled": enabled, "topic": pushTopic(user), "server": c.ntfyPublicURL, "pending": count, "lastSuccess": sent, "lastError": lastError})
 		return
 	}
 	if r.Method != "PUT" {
@@ -248,7 +258,7 @@ func (c *Server) deliverPush(ctx context.Context) bool {
 		fresh = fresh || now.Sub(j.At) < 15*time.Minute
 	}
 	if fresh {
-		err = publishNtfy(ctx, c.ntfyURL, c.ntfyToken, "anban-"+user, test)
+		err = publishNtfy(ctx, c.ntfyURL, c.ntfyToken, pushTopic(user), test)
 	}
 	if err != nil {
 		_, err = tx.ExecContext(ctx, `UPDATE anban_push_settings SET last_error=$2 WHERE user_id=$1`, user, err.Error())
