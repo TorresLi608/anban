@@ -1,11 +1,13 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:home_widget/home_widget.dart';
 
 import '../data/models.dart';
 import '../data/planning.dart';
 import '../data/store.dart';
 import '../services/reminders.dart';
 import '../services/account.dart';
+import '../services/reminder_widget.dart';
 import '../ui.dart';
 
 Future<void> openSettings(
@@ -348,6 +350,35 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
           Section('各类下一次通知', child: nextReminderTimes()),
+          if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
+            Section(
+              '桌面提醒卡片',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Note(
+                    '显示当前账号用餐、喝水和行程的下一次提醒时间，沿用各项通知开关。保存设置或打开安伴后同步未来14天，时间到后自动换到下一项；系统省电策略可能延迟卡片刷新。',
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: saving
+                        ? null
+                        : () => attempt(context, () async {
+                            await updateReminderWidget(widget.store.data);
+                            if (await HomeWidget.isRequestPinWidgetSupported() ==
+                                true) {
+                              await HomeWidget.requestPinWidget(
+                                androidName: reminderWidgetProvider,
+                              );
+                            } else if (context.mounted) {
+                              toast(context, '请长按桌面 → 小组件 → 安伴提醒，添加到桌面');
+                            }
+                          }),
+                    icon: const Icon(Icons.widgets_outlined),
+                    label: const Text('添加桌面提醒卡片'),
+                  ),
+                ],
+              ),
+            ),
           ListenableBuilder(
             listenable: widget.reminders,
             builder: (_, _) => Note(widget.reminders.status),

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/reminder_widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="@drawable/reminder_widget_background">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="安伴 · 下次提醒"
+        android:textColor="#1E3A2B"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/reminder_widget_summary"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="用餐、喝水和行程提醒"
+        android:ellipsize="end"
+        android:maxLines="5"
+        android:textColor="#26352C"
+        android:textSize="13sp" />
+
+    <TextView
+        android:id="@+id/reminder_widget_synced"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:textColor="#607566"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:textSize="10sp" />
+</LinearLayout>

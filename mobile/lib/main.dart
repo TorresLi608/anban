@@ -10,6 +10,7 @@ import 'services/media_source.dart';
 import 'services/account.dart';
 import 'services/app_update.dart';
 import 'services/reminders.dart';
+import 'services/reminder_widget.dart';
 import 'screens/home.dart';
 import 'screens/records.dart';
 import 'screens/care.dart';
@@ -33,6 +34,7 @@ Future<void> main() async {
     }
     final reminders = ReminderService();
     await reminders.initialize();
+    await updateReminderWidget(store.data);
     // Existing system reminders survive opening the login screen. Reschedule
     // after login; explicit logout/settings changes still cancel old schedules.
     runApp(

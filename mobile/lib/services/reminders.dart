@@ -10,6 +10,7 @@ import 'package:timezone/timezone.dart' as tz;
 import '../data/models.dart';
 import '../data/planning.dart';
 import 'account.dart';
+import 'reminder_widget.dart';
 import 'remote_reminders.dart';
 
 const reminderModeNotification = 'notification';
@@ -141,6 +142,7 @@ class ReminderService extends ChangeNotifier {
     required bool force,
     required bool clearTest,
   }) async {
+    await updateReminderWidget(data);
     if (!initialized) {
       return;
     }
