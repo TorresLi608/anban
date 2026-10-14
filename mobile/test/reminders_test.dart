@@ -94,7 +94,14 @@ void main() {
         expect(details.channelId, reminderChannelId);
         expect(details.playSound, isTrue);
         expect(details.enableVibration, isTrue);
-        expect(details.audioAttributesUsage, AudioAttributesUsage.notification);
+        expect(details.importance, Importance.max);
+        expect(details.priority, Priority.max);
+        expect(
+          details.audioAttributesUsage,
+          mode == reminderModeAlarm
+              ? AudioAttributesUsage.alarm
+              : AudioAttributesUsage.notification,
+        );
       }
     }
   });
@@ -149,7 +156,7 @@ void main() {
       expect(specifics['channelId'], reminderChannelId);
       expect(
         specifics['scheduleMode'],
-        AndroidScheduleMode.exactAllowWhileIdle.name,
+        AndroidScheduleMode.alarmClock.name,
       );
       expect(args['matchDateTimeComponents'], isNull);
       expect(calls, isNot(contains('show')));
@@ -269,14 +276,16 @@ void main() {
   );
 
   test(
-    'remote reminders require login before canceling local schedules',
+    'scheduled reminders use system alarm clock mode for reliability',
     () async {
+      exact = true;
       await reminders.initialize();
       await reminders.refresh(CareData(settings: {'notifyMeal': 'true'}));
-      final previous = Map<int, Map<String, Object?>>.from(pending);
-      await reminders.refresh(CareData(settings: {'notifyRemote': 'true'}));
-      expect(reminders.lastError, contains('请先登录'));
-      expect(pending, previous);
+      expect(reminders.lastError, isNull);
+      expect(pending, isNotEmpty);
+      final first = pending.values.first;
+      final specifics = first['platformSpecifics'] as Map;
+      expect(specifics['scheduleMode'], AndroidScheduleMode.alarmClock.name);
     },
   );
 
@@ -310,6 +319,32 @@ void main() {
       await reminders.testNotification('meal');
       expect(reminders.initialized, isTrue);
       expect(calls, contains('show'));
+    },
+  );
+
+  test(
+    'keep alive service is started when reminders are scheduled and stopped when disabled',
+    () async {
+      const backgroundChannel = MethodChannel('app.anban.anban/reminders');
+      final bgCalls = <String>[];
+      messenger.setMockMethodCallHandler(backgroundChannel, (call) async {
+        bgCalls.add(call.method);
+        if (call.method == 'isKeepAliveRunning') return true;
+        return null;
+      });
+      addTearDown(
+        () => messenger.setMockMethodCallHandler(backgroundChannel, null),
+      );
+
+      await reminders.initialize();
+      await reminders.refresh(CareData(settings: {'notifyMeal': 'true'}));
+      expect(bgCalls, contains('startKeepAlive'));
+
+      bgCalls.clear();
+      await reminders.refresh(
+        CareData(settings: {'notifyMeal': 'true', 'keepAlive': 'false'}),
+      );
+      expect(bgCalls, contains('stopKeepAlive'));
     },
   );
 }

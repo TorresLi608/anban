@@ -50,18 +50,35 @@ class MainActivity : FlutterActivity() {
                         val details = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))
                         try {
                             val intent = if (call.method == "openBatterySettings") {
-                                Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                val power = getSystemService(POWER_SERVICE) as PowerManager
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !power.isIgnoringBatteryOptimizations(packageName)) {
+                                    Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))
+                                } else {
+                                    Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                }
                             } else details
                             startActivity(intent)
                             result.success(null)
-                        } catch (_: android.content.ActivityNotFoundException) {
+                        } catch (_: Exception) {
                             try {
                                 startActivity(details)
                                 result.success(null)
-                            } catch (e: android.content.ActivityNotFoundException) {
+                            } catch (e: Exception) {
                                 result.error("settings_unavailable", "无法打开系统设置", e.message)
                             }
                         }
+                    }
+                    "startKeepAlive" -> {
+                        val text = call.argument<String>("text")
+                        KeepAliveService.start(this, text)
+                        result.success(true)
+                    }
+                    "stopKeepAlive" -> {
+                        KeepAliveService.stop(this)
+                        result.success(true)
+                    }
+                    "isKeepAliveRunning" -> {
+                        result.success(KeepAliveService.isRunning)
                     }
                     else -> result.notImplemented()
                 }

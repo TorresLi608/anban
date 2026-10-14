@@ -360,106 +360,465 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  Widget _buildPatientHeroCard(CareData data) {
+    final profile = data.profile;
+    final name = profile['name']?.trim().isNotEmpty == true ? profile['name']! : '未命名患者';
+    final age = profile['age']?.trim().isNotEmpty == true ? '${profile['age']} 岁' : '年龄待补充';
+    final doctor = profile['doctor']?.trim().isNotEmpty == true ? profile['doctor']! : '医生待补充';
+    final hospital = profile['hospital']?.trim().isNotEmpty == true ? profile['hospital']! : '医院待补充';
+    final diagnosis = profile['diagnosis']?.trim().isNotEmpty == true ? profile['diagnosis']! : '';
+    final note = profile['note']?.trim() ?? '';
+
+    // 计算陪伴守护天数
+    int days = 1;
+    if (diagnosis.isNotEmpty) {
+      final diagDate = DateTime.tryParse(diagnosis);
+      if (diagDate != null) {
+        days = DateTime.now().difference(diagDate).inDays.abs() + 1;
+      }
+    } else if (data.records.isNotEmpty) {
+      days = DateTime.now().difference(data.records.last.at).inDays.abs() + 1;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 24),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF245B4B), Color(0xFF1B4539)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x28245B4B),
+            blurRadius: 18,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          // 背景微装饰
+          Positioned(
+            right: -20,
+            top: -20,
+            child: Container(
+              width: 130,
+              height: 130,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.05),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 顶部姓名与编辑入口
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 52,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.16),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.35),
+                          width: 2,
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        name.characters.first,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  name,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.3,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.18),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  age,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            diagnosis.isNotEmpty ? '确诊日期：$diagnosis' : '建议完善确诊与就诊信息',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.8),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: busy ? null : () => run(editProfile),
+                      icon: const Icon(Icons.edit_outlined, size: 14, color: Colors.white),
+                      label: const Text('编辑', style: TextStyle(color: Colors.white, fontSize: 12)),
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(color: Colors.white.withValues(alpha: 0.35)),
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+
+                // 医院与主治医师
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.local_hospital_rounded, size: 16, color: Color(0xFFB4E3D5)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '$hospital · $doctor',
+                          style: const TextStyle(color: Colors.white, fontSize: 13),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                if (note.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Text(
+                      '备注：$note',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.9),
+                        fontSize: 12,
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+                ],
+
+                const SizedBox(height: 18),
+                const Divider(color: Colors.white24, height: 1),
+                const SizedBox(height: 16),
+
+                // 三列数据里程碑统计
+                Row(
+                  children: [
+                    Expanded(child: _buildMilestoneColumn('安全守护', '$days', '天')),
+                    Container(height: 24, width: 1, color: Colors.white24),
+                    Expanded(child: _buildMilestoneColumn('健康记录', '${data.records.length}', '条')),
+                    Container(height: 24, width: 1, color: Colors.white24),
+                    Expanded(child: _buildMilestoneColumn('数据安全', '端到端', '加密')),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMilestoneColumn(String label, String value, String unit) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                value,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(width: 2),
+              Text(
+                unit,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.75),
+                  fontSize: 11,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 2),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            label,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.70),
+              fontSize: 11,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSectionHeader({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: pine.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: pine, size: 20),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: pine,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: const TextStyle(fontSize: 11.5, color: muted),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModernOption({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback action,
+    bool isDestructive = false,
+  }) => ListTile(
+    contentPadding: const EdgeInsets.symmetric(vertical: 4),
+    leading: Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: isDestructive
+            ? danger.withValues(alpha: 0.1)
+            : pine.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Icon(
+        icon,
+        color: isDestructive ? danger : pine,
+        size: 20,
+      ),
+    ),
+    title: Text(
+      title,
+      style: TextStyle(
+        fontSize: 14.5,
+        fontWeight: FontWeight.w600,
+        color: isDestructive ? danger : null,
+      ),
+    ),
+    subtitle: Text(
+      subtitle,
+      style: const TextStyle(fontSize: 12, color: muted, height: 1.5),
+    ),
+    trailing: const Icon(Icons.chevron_right_rounded, size: 20, color: muted),
+    onTap: busy ? null : action,
+  );
+
   @override
   Widget build(BuildContext context) {
     if (widget.loginOnly) {
-      return ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.spa_outlined, size: 48, color: pine),
-            const SizedBox(height: 24),
-            const Text('安伴 · 云端照护空间', style: TextStyle(fontSize: 26)),
-            const SizedBox(height: 16),
-            const Text('登录后读取云端资料，记录自动保存。', textAlign: TextAlign.center),
-            if (widget.restoreError != null) ...[
-              const SizedBox(height: 16),
-              Note(widget.restoreError!, urgent: true),
-              TextButton(
-                onPressed: busy
-                    ? null
-                    : () => run(() async {
-                        if (!await Account.restore(widget.store) &&
-                            context.mounted) {
-                          toast(context, '登录已过期，请重新登录；此设备已记住的资料密码可留空');
-                        }
-                      }),
-                child: const Text('重试自动登录'),
-              ),
-            ],
-            const SizedBox(height: 24),
-            if (busy)
-              const LinearProgressIndicator()
-            else
-              FilledButton(
-                onPressed: () => run(connect),
-                child: const Text('登录 / 注册'),
-              ),
-            if (AppUpdate.supported)
-              TextButton(
-                onPressed: busy
-                    ? null
-                    : () => run(() => AppUpdate.check(context)),
-                child: const Text('检查更新'),
-              ),
-          ],
+      return Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Surface(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: pine.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.spa_rounded, size: 48, color: pine),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  '安伴 · 云端照护空间',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: pine,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  '登录后读取加密云端资料，健康与用药记录全自动安全同步。',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: muted, fontSize: 13.5, height: 1.6),
+                ),
+                if (widget.restoreError != null) ...[
+                  const SizedBox(height: 16),
+                  Note(widget.restoreError!, urgent: true),
+                  TextButton(
+                    onPressed: busy
+                        ? null
+                        : () => run(() async {
+                            if (!await Account.restore(widget.store) &&
+                                context.mounted) {
+                              toast(context, '登录已过期，请重新登录；此设备已记住的资料密码可留空');
+                            }
+                          }),
+                    child: const Text('重试自动登录'),
+                  ),
+                ],
+                const SizedBox(height: 24),
+                if (busy)
+                  const LinearProgressIndicator()
+                else
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () => run(connect),
+                      icon: const Icon(Icons.login_rounded),
+                      label: const Text('登录 / 注册'),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                    ),
+                  ),
+                if (AppUpdate.supported) ...[
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: busy
+                        ? null
+                        : () => run(() => AppUpdate.check(context)),
+                    icon: const Icon(Icons.system_update_outlined, size: 16),
+                    label: const Text('检查最新版本', style: TextStyle(fontSize: 13)),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ),
       );
     }
+
     final data = widget.store.data;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const PageHeading('MY SPACE', '我的', '档案、隐私与提醒偏好。'),
-        if (busy) const LinearProgressIndicator(),
-        Section(
-          '患者基础档案',
-          trailing: TextButton(
-            onPressed: busy ? null : () => run(editProfile),
-            child: const Text('编辑'),
+        if (busy)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 16),
+            child: LinearProgressIndicator(),
           ),
-          child: Surface(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  data.profile['name']?.isNotEmpty == true
-                      ? data.profile['name']!
-                      : '还未填写患者档案',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  '年龄：${data.profile['age'] ?? '未填写'}  ·  主治医生：${data.profile['doctor'] ?? '未填写'}',
-                ),
-                Text(data.profile['hospital'] ?? ''),
-                Text(data.profile['note'] ?? ''),
-              ],
-            ),
-          ),
-        ),
-        Section(
-          '数据与隐私',
+
+        // 1. 患者健康名片 Hero Card
+        _buildPatientHeroCard(data),
+
+        // 2. 数据与隐私安全卡片
+        Surface(
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              option(
-                Icons.lock_outline,
-                '导出加密备份',
-                '包含云端记录与附件',
-                () => run(backup),
+              _buildSectionHeader(
+                icon: Icons.shield_outlined,
+                title: '数据与隐私安全',
+                subtitle: '端到端高强度加密，数据自主掌控',
               ),
-              option(
-                Icons.restore,
-                '从加密备份恢复',
-                '完整校验后上传至当前账号',
-                () => run(restore),
+              _buildModernOption(
+                icon: Icons.file_download_outlined,
+                title: '导出加密备份',
+                subtitle: '包含云端记录与附件，生成安全 .anban 文件',
+                action: () => run(backup),
               ),
-              option(
-                Icons.logout,
-                '退出登录',
-                Account.current?['username'] ?? '',
-                () => run(() async {
+              const Divider(height: 1),
+              _buildModernOption(
+                icon: Icons.settings_backup_restore_rounded,
+                title: '从加密备份恢复',
+                subtitle: '密码校验后安全覆盖还原资料',
+                action: () => run(restore),
+              ),
+              const Divider(height: 1),
+              _buildModernOption(
+                icon: Icons.logout_rounded,
+                title: '退出登录',
+                subtitle: '当前账号：${Account.current?['username'] ?? '未登录'}',
+                action: () => run(() async {
                   await Account.logout(widget.store);
                   await widget.reminders.refresh(
                     widget.store.data,
@@ -467,72 +826,112 @@ class _ProfilePageState extends State<ProfilePage> {
                     clearTest: true,
                   );
                 }),
+                isDestructive: true,
               ),
             ],
           ),
         ),
-        Section(
-          '使用偏好',
+        const SizedBox(height: 20),
+
+        // 3. 照护使用偏好
+        Surface(
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('大字模式'),
-                value: data.settings['largeText'] == 'true',
-                onChanged: busy
-                    ? null
-                    : (v) =>
-                          run(() => widget.store.settings({'largeText': '$v'})),
+              _buildSectionHeader(
+                icon: Icons.tune_rounded,
+                title: '界面与使用偏好',
+                subtitle: '关怀老年阅读、舒缓暗色体验',
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('夜间模式'),
+                secondary: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: pine.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.text_fields_rounded, color: pine, size: 20),
+                ),
+                title: const Text('大字关怀模式', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('放大核心文字与排版，方便长辈阅读', style: TextStyle(fontSize: 12)),
+                value: data.settings['largeText'] == 'true',
+                onChanged: busy
+                    ? null
+                    : (v) => run(() => widget.store.settings({'largeText': '$v'})),
+              ),
+              const Divider(height: 1),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                secondary: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: pine.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.dark_mode_outlined, color: pine, size: 20),
+                ),
+                title: const Text('夜间深色模式', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('减少夜间屏幕强光刺激，安心休养', style: TextStyle(fontSize: 12)),
                 value: data.settings['dark'] == 'true',
                 onChanged: busy
                     ? null
                     : (v) => run(() => widget.store.settings({'dark': '$v'})),
               ),
-              option(
-                Icons.notifications_outlined,
-                '设置',
-                '用餐、喝水、PICC、输液港、化疗通知',
-                () => openSettings(context, widget.store, widget.reminders),
+              const Divider(height: 1),
+              _buildModernOption(
+                icon: Icons.alarm_on_rounded,
+                title: '提醒与推送细项设置',
+                subtitle: '用餐、喝水、PICC、输液港、化疗周期排程与桌面卡片',
+                action: () => openSettings(context, widget.store, widget.reminders),
               ),
-              if (AppUpdate.supported)
-                option(
-                  Icons.system_update_outlined,
-                  '检查更新',
-                  '查看新版本并前往下载',
-                  () => run(() => AppUpdate.check(context)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+
+        // 4. 版本与应用支持
+        Surface(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSectionHeader(
+                icon: Icons.info_outline_rounded,
+                title: '关于安伴',
+                subtitle: '为肿瘤患者及家属打造的温情照护助手',
+              ),
+              if (AppUpdate.supported) ...[
+                _buildModernOption(
+                  icon: Icons.system_update_rounded,
+                  title: '检查应用更新',
+                  subtitle: '获取最新的功能与安全修复',
+                  action: () => run(() => AppUpdate.check(context)),
                 ),
-              if (AppUpdate.supported)
+                const Divider(height: 1),
                 FutureBuilder<String?>(
                   future: AppUpdate.installedVersionName(),
                   builder: (_, snapshot) => ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.info_outline, color: pine),
-                    title: const Text('当前版本'),
-                    subtitle: Text(snapshot.data ?? '读取中…'),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: pine.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.check_circle_outline_rounded, color: pine, size: 20),
+                    ),
+                    title: const Text('当前版本号', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+                    trailing: Text(
+                      snapshot.data ?? '读取中…',
+                      style: const TextStyle(color: muted, fontSize: 13, fontWeight: FontWeight.w600),
+                    ),
                   ),
                 ),
+              ],
             ],
           ),
         ),
       ],
     );
   }
-
-  Widget option(
-    IconData icon,
-    String title,
-    String subtitle,
-    VoidCallback action,
-  ) => ListTile(
-    contentPadding: const EdgeInsets.symmetric(vertical: 6),
-    leading: Icon(icon, color: pine),
-    title: Text(title),
-    subtitle: Text(subtitle, style: const TextStyle(fontSize: 12, height: 1.7)),
-    trailing: const Icon(Icons.chevron_right, size: 20),
-    onTap: busy ? null : action,
-  );
 }

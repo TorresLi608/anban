@@ -173,9 +173,7 @@ class Surface extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     width: double.infinity,
-    padding: padding,
     decoration: BoxDecoration(
-      color: color,
       borderRadius: BorderRadius.circular(20),
       border: border ?? Border.all(color: const Color(0xFFE5ECE3), width: 1),
       boxShadow: const [
@@ -186,7 +184,15 @@ class Surface extends StatelessWidget {
         ),
       ],
     ),
-    child: child,
+    child: Material(
+      color: color,
+      borderRadius: BorderRadius.circular(20),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: padding,
+        child: child,
+      ),
+    ),
   );
 }
 
@@ -333,3 +339,80 @@ String recordSummary(CareRecord r) => switch (r.kind) {
   'mood' => r.text('note'),
   _ => r.text('note'),
 };
+
+IconData kindIcon(String kind) => switch (kind) {
+  'weight' => Icons.monitor_weight_outlined,
+  'temperature' => Icons.device_thermostat_outlined,
+  'heartRate' => Icons.favorite_outline,
+  'stool' || 'urine' => Icons.water_drop_outlined,
+  'pain' => Icons.bolt_outlined,
+  'symptom' => Icons.healing_outlined,
+  'instruction' => Icons.note_alt_outlined,
+  'journey' || 'journeyEntry' => Icons.local_hospital_outlined,
+  _ => Icons.edit_note,
+};
+
+Color kindColor(String kind) => switch (kind) {
+  'weight' => const Color(0xFF2E7D32),
+  'temperature' => const Color(0xFFE65100),
+  'heartRate' => const Color(0xFFC2185B),
+  'stool' || 'urine' => const Color(0xFF0288D1),
+  'pain' => const Color(0xFFD32F2F),
+  'symptom' => const Color(0xFF7B1FA2),
+  'instruction' => pine,
+  'journey' || 'journeyEntry' => pine,
+  _ => const Color(0xFF5D4037),
+};
+
+Color kindBadgeBg(String kind) => switch (kind) {
+  'weight' => const Color(0xFFE8F5E9),
+  'temperature' => const Color(0xFFFFF3E0),
+  'heartRate' => const Color(0xFFFCE4EC),
+  'stool' || 'urine' => const Color(0xFFE1F5FE),
+  'pain' => const Color(0xFFFFEBEE),
+  'symptom' => const Color(0xFFF3E5F5),
+  'instruction' => const Color(0xFFE8F0E7),
+  'journey' || 'journeyEntry' => const Color(0xFFE8F0E7),
+  _ => const Color(0xFFEFEBE9),
+};
+
+class StatusBadge extends StatelessWidget {
+  final String label;
+  final Color textColor;
+  final Color backgroundColor;
+  final IconData? icon;
+
+  const StatusBadge({
+    super.key,
+    required this.label,
+    this.textColor = pine,
+    this.backgroundColor = const Color(0xFFE8F0E7),
+    this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: backgroundColor,
+      borderRadius: BorderRadius.circular(6),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (icon != null) ...[
+          Icon(icon, size: 12, color: textColor),
+          const SizedBox(width: 4),
+        ],
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: textColor,
+          ),
+        ),
+      ],
+    ),
+  );
+}

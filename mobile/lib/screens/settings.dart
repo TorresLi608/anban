@@ -6,7 +6,6 @@ import '../data/models.dart';
 import '../data/planning.dart';
 import '../data/store.dart';
 import '../services/reminders.dart';
-import '../services/account.dart';
 import '../services/reminder_widget.dart';
 import '../ui.dart';
 
@@ -34,7 +33,7 @@ class _SettingsPageState extends State<SettingsPage> {
   late Map<String, TextEditingController> inputs;
   late Map<String, bool> switches;
   late String reminderMode;
-  bool remoteEnabled = false;
+  late bool keepAlive;
   bool saving = false;
   String? error;
   @override
@@ -42,7 +41,7 @@ class _SettingsPageState extends State<SettingsPage> {
     super.initState();
     final s = widget.store.data.settings;
     reminderMode = normalizedReminderMode(s['reminderMode']);
-    remoteEnabled = s['notifyRemote'] == 'true';
+    keepAlive = s['keepAlive'] != 'false';
     final defaults = {
       'mealStart': '07:30',
       'mealEnd': '18:30',
@@ -89,8 +88,9 @@ class _SettingsPageState extends State<SettingsPage> {
         for (final e in inputs.entries) e.key: e.value.text.trim(),
         for (final e in switches.entries) e.key: '${e.value}',
         'reminderMode': reminderMode,
-        'notifyRemote': '$remoteEnabled',
+        'keepAlive': '$keepAlive',
       };
+      values.remove('notifyRemote');
       mealTimes(values);
       if (values['waterStart']!.isNotEmpty ||
           values['waterEnd']!.isNotEmpty ||
@@ -105,7 +105,6 @@ class _SettingsPageState extends State<SettingsPage> {
         settingInt(values, 'count_$category', 1, 1, 8);
       }
       if (switches.values.any((v) => v) &&
-          !remoteEnabled &&
           widget.reminders.supported &&
           !await widget.reminders.requestPermission()) {
         throw StateError('请先允许系统通知权限');
@@ -196,252 +195,510 @@ class _SettingsPageState extends State<SettingsPage> {
       ],
     ),
   );
+  Widget _buildOverviewHeader() {
+    final activeCount = switches.values.where((v) => v).length;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [pine.withValues(alpha: 0.12), pine.withValues(alpha: 0.04)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: pine.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: pine.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.notifications_active_rounded, color: pine, size: 26),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '照护提醒中枢',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: pine,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '已启用 $activeCount 项照护提醒 · 本地闹钟强提醒就绪',
+                  style: const TextStyle(fontSize: 12.5, color: muted),
+                ),
+              ],
+            ),
+          ),
+          if (widget.reminders.supported)
+            TextButton.icon(
+              onPressed: () => attempt(context, widget.reminders.openSystemSettings),
+              icon: const Icon(Icons.tune, size: 16),
+              label: const Text('系统设置', style: TextStyle(fontSize: 12)),
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCardHeader({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    Widget? trailing,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: pine.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: pine, size: 20),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: pine,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: const TextStyle(fontSize: 11.5, color: muted),
+                ),
+              ],
+            ),
+          ),
+          ?trailing,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimeField(String name, String label, {IconData icon = Icons.access_time}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: saving
+            ? null
+            : () async {
+                final old = inputs[name]!.text;
+                final minutes = old.isEmpty ? 8 * 60 : minuteOfDay(old);
+                final value = await showTimePicker(
+                  context: context,
+                  initialTime: TimeOfDay(
+                    hour: minutes ~/ 60,
+                    minute: minutes % 60,
+                  ),
+                );
+                if (value != null && mounted) {
+                  setState(
+                    () => inputs[name]!.text = minuteLabel(
+                      value.hour * 60 + value.minute,
+                    ),
+                  );
+                }
+              },
+        child: InputDecorator(
+          decoration: InputDecoration(
+            labelText: label,
+            prefixIcon: Icon(icon, size: 20, color: pine),
+            suffixIcon: const Icon(Icons.arrow_drop_down, color: muted),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          ),
+          child: Text(
+            inputs[name]!.text.isEmpty ? '点击设置时间' : inputs[name]!.text,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: inputs[name]!.text.isEmpty ? muted : pine,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('提醒设置')),
+    appBar: AppBar(
+      title: const Text('提醒设置'),
+      actions: [
+        if (saving)
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.only(right: 16),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          )
+        else
+          TextButton(
+            onPressed: save,
+            child: const Text('保存', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+      ],
+    ),
     body: Form(
       key: key,
       child: ListView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
         children: [
-          Section(
-            '后端推送（ntfy）',
+          _buildOverviewHeader(),
+
+          // 1. 日常饮食与饮水作息
+          Surface(
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('使用 ntfy 后端提醒'),
-                  subtitle: const Text(
-                    '开启后发送提醒时间和时区到后端，由 ntfy 客户端显示通知；本地日常提醒关闭以免重复。照护内容不发送给 ntfy。',
-                  ),
-                  value: remoteEnabled,
-                  onChanged: saving
-                      ? null
-                      : (value) => setState(() => remoteEnabled = value),
+                _buildCardHeader(
+                  icon: Icons.restaurant_rounded,
+                  title: '用餐作息提醒',
+                  subtitle: '少食多餐均匀规划，提醒温和按时进食',
+                  trailing: widget.reminders.supported ? testButton('meal') : null,
                 ),
-                const Note(
-                  '需另行安装 ntfy 客户端，添加自建服务器和只读账号，再订阅本账号主题。ntfy 客户端需允许后台运行。设置保存后生效。',
-                ),
-                TextButton(
-                  onPressed: () => attempt(context, () async {
-                    final info = await Account.reminderRequest('GET');
-                    if (!context.mounted) return;
-                    await showDialog<void>(
-                      context: context,
-                      builder: (c) => AlertDialog(
-                        title: const Text('ntfy 订阅信息'),
-                        content: SingleChildScrollView(
-                          child: SelectableText(
-                            '服务器：${info['server']}\n主题：${info['topic']}\n后端待提醒：${info['pending']}\n最近提交 ntfy：${info['lastSuccess'] ?? '暂无'}\n发送错误：${info['lastError'] == '' ? '暂无' : info['lastError']}\n\n提交成功不代表手机收到。请使用部署时分配的只读账号订阅。',
-                          ),
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(c),
-                            child: const Text('关闭'),
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
-                  child: const Text('查看订阅信息与后端状态'),
-                ),
-                OutlinedButton(
-                  onPressed: () => attempt(context, () async {
-                    final info = await Account.reminderRequest(
-                      'POST',
-                      test: true,
-                    );
-                    if (context.mounted) {
-                      final at = DateTime.parse(info['at'] as String).toLocal();
-                      toast(
-                        context,
-                        '后端测试已安排：${dayKey(at)} ${clockText(at)}。请返回桌面/锁屏，等待 ntfy 通知。',
-                      );
-                    }
-                  }),
-                  child: const Text('1 分钟后发送后端测试通知'),
-                ),
-              ],
-            ),
-          ),
-          if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
-            const Section(
-              '提醒方式',
-              child: Note(
-                '所有提醒使用同一个“安伴提醒”通知渠道，声音和震动统一在系统通知设置中调整。准时提醒另外需要系统的“闹钟和提醒”权限。',
-              ),
-            )
-          else
-            Section(
-              '提醒方式',
-              child: RadioGroup<String>(
-                groupValue: reminderMode,
-                onChanged: saving
-                    ? (_) {}
-                    : (value) {
-                        if (value != null) setState(() => reminderMode = value);
-                      },
-                child: Column(
+                toggle('notifyMeal', '开启用餐通知'),
+                const Divider(height: 20),
+                Row(
                   children: [
-                    RadioListTile<String>(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('仅推送'),
-                      subtitle: const Text('使用普通通知声音和震动，不占用闹钟音频'),
-                      value: reminderModeNotification,
-                      enabled: !saving,
-                    ),
-                    RadioListTile<String>(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('推送 + 闹钟'),
-                      subtitle: const Text('显示通知，并使用闹钟声音和震动提醒'),
-                      value: reminderModeAlarm,
-                      enabled: !saving,
-                    ),
+                    Expanded(child: field('mealCount', '每日餐数 (1-12)')),
+                    const SizedBox(width: 12),
+                    Expanded(child: field('mealDuration', '每餐时长 (分钟)')),
                   ],
                 ),
-              ),
-            ),
-          const Note(
-            'Android 只需允许一次“安伴”通知权限。下面的开关分别控制用餐、喝水和各项护理提醒；关闭某项不会影响其他提醒。',
-          ),
-          Section(
-            '用餐提醒',
-            trailing: widget.reminders.supported ? testButton('meal') : null,
-            child: Column(
-              children: [
-                toggle('notifyMeal', '用餐通知'),
-                field('mealCount', '每天用餐次数（1–12）'),
-                field('mealDuration', '每次用餐时长（分钟，5–180）'),
-                field('mealStart', '第一餐开始时间', time: true),
-                field('mealEnd', '最后一餐结束时间', time: true),
-                const Text('各餐均匀分布在时段内，最后一餐在结束时间前完成。'),
+                Row(
+                  children: [
+                    Expanded(child: _buildTimeField('mealStart', '首餐开始时间')),
+                    const SizedBox(width: 12),
+                    Expanded(child: _buildTimeField('mealEnd', '末餐结束时间')),
+                  ],
+                ),
+                const Note('各餐将在起止时段内均匀分布提醒，保障能量持续供给。'),
               ],
             ),
           ),
-          Section(
-            '喝水提醒',
-            trailing: widget.reminders.supported ? testButton('water') : null,
+          const SizedBox(height: 20),
+
+          // 2. 补水饮水节奏
+          Surface(
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                toggle('notifyWater', '喝水通知'),
-                field('waterStart', '喝水开始时间', time: true),
-                field('waterEnd', '喝水结束时间', time: true),
-                field('waterInterval', '提醒间隔（分钟，5–720）'),
-                const Text('开始和结束时间应在同一天；间隔默认30分钟。'),
+                _buildCardHeader(
+                  icon: Icons.water_drop_rounded,
+                  title: '规律饮水提醒',
+                  subtitle: '少量多次补充水分，预防化疗副反应',
+                  trailing: widget.reminders.supported ? testButton('water') : null,
+                ),
+                toggle('notifyWater', '开启喝水通知'),
+                const Divider(height: 20),
+                Row(
+                  children: [
+                    Expanded(child: _buildTimeField('waterStart', '喝水开始时间', icon: Icons.wb_sunny_outlined)),
+                    const SizedBox(width: 12),
+                    Expanded(child: _buildTimeField('waterEnd', '喝水结束时间', icon: Icons.nightlight_outlined)),
+                  ],
+                ),
+                field('waterInterval', '提醒间隔（分钟，默认 30）'),
+                const Note('建议化疗期间保持足量饮水，促进代谢排泄。'),
               ],
             ),
           ),
-          for (final category in journeyCategories.entries)
-            Section(
-              category.value,
-              trailing: widget.reminders.supported
-                  ? testButton(category.key)
-                  : null,
+          const SizedBox(height: 20),
+
+          // 3. 医疗行程提前提醒 (化疗/PICC/输液港)
+          for (final category in journeyCategories.entries) ...[
+            Surface(
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  toggle('notify_${category.key}', '${category.value}通知'),
-                  field('lead_${category.key}', '提前几天（0–90）'),
-                  field('count_${category.key}', '提前期间每天提醒次数（1–8）'),
-                  const Text(
-                    '提前期间在09:00–18:00均匀提醒；默认每天09:00一次。执行当天按填写的执行时间提醒。',
+                  _buildCardHeader(
+                    icon: category.key == 'chemo'
+                        ? Icons.medication_liquid_rounded
+                        : Icons.healing_rounded,
+                    title: '${category.value}提醒',
+                    subtitle: '执行当天按时提醒，支持提前数日连续关怀',
+                    trailing: widget.reminders.supported
+                        ? testButton(category.key)
+                        : null,
+                  ),
+                  toggle('notify_${category.key}', '开启${category.value}通知'),
+                  const Divider(height: 20),
+                  Row(
+                    children: [
+                      Expanded(child: field('lead_${category.key}', '提前天数 (0-90)')),
+                      const SizedBox(width: 12),
+                      Expanded(child: field('count_${category.key}', '每天提醒频次 (1-8)')),
+                    ],
+                  ),
+                  const Note(
+                    '提前期间在 09:00–18:00 均匀提醒；执行当天按填写的确切执行时间准时提醒。',
                   ),
                 ],
               ),
             ),
-          Section('各类下一次通知', child: nextReminderTimes()),
-          if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
-            Section(
-              '桌面提醒卡片',
+            const SizedBox(height: 20),
+          ],
+
+          // 4. 提醒方式与声音
+          Surface(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildCardHeader(
+                  icon: Icons.volume_up_rounded,
+                  title: '提醒方式与声音',
+                  subtitle: '定制提醒铃声与振动强弱',
+                ),
+                if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
+                  const Note(
+                    '所有提醒使用独立的“安伴提醒”高优先级通知渠道，声音与振动可直接在系统通知设置中调整。如需锁屏响铃，请授予“闹钟和提醒”权限。',
+                  )
+                else
+                  RadioGroup<String>(
+                    groupValue: reminderMode,
+                    onChanged: saving
+                        ? (_) {}
+                        : (value) {
+                            if (value != null) setState(() => reminderMode = value);
+                          },
+                    child: Column(
+                      children: [
+                        RadioListTile<String>(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('仅推送通知'),
+                          subtitle: const Text('使用普通温和提示音，不占用系统闹钟通道'),
+                          value: reminderModeNotification,
+                          enabled: !saving,
+                        ),
+                        RadioListTile<String>(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('强提醒（推送 + 闹钟）'),
+                          subtitle: const Text('显示通知，并以闹钟铃声和振动持续提醒'),
+                          value: reminderModeAlarm,
+                          enabled: !saving,
+                        ),
+                      ],
+                    ),
+                  ),
+                if (widget.reminders.supported) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: saving
+                              ? null
+                              : () => attempt(context, () async {
+                                  final at = await widget.reminders
+                                      .testScheduledNotification(mode: reminderMode);
+                                  if (context.mounted) {
+                                    toast(
+                                      context,
+                                      '定时测试已安排在 ${clockText(at)}。请返回桌面或锁屏等待。',
+                                    );
+                                  }
+                                }),
+                          icon: const Icon(Icons.timer_outlined, size: 18),
+                          label: const Text('1分钟后测试提醒'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // 5. 桌面提醒小组件 (Android)
+          if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) ...[
+            Surface(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  _buildCardHeader(
+                    icon: Icons.widgets_rounded,
+                    title: '桌面提醒卡片',
+                    subtitle: '无需打开应用，在手机桌面随时看下一项提醒',
+                  ),
                   const Note(
                     '显示当前账号用餐、喝水和行程的下一次提醒时间，沿用各项通知开关。保存设置或打开安伴后同步未来14天，时间到后自动换到下一项；系统省电策略可能延迟卡片刷新。',
                   ),
-                  OutlinedButton.icon(
-                    onPressed: saving
-                        ? null
-                        : () => attempt(context, () async {
-                            await updateReminderWidget(widget.store.data);
-                            if (await HomeWidget.isRequestPinWidgetSupported() ==
-                                true) {
-                              await HomeWidget.requestPinWidget(
-                                androidName: reminderWidgetProvider,
-                              );
-                              if (context.mounted) {
-                                toast(context, '已请求桌面添加；若未弹出确认，请查看下方添加说明');
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.tonalIcon(
+                      onPressed: saving
+                          ? null
+                          : () => attempt(context, () async {
+                              await updateReminderWidget(widget.store.data);
+                              if (await HomeWidget.isRequestPinWidgetSupported() ==
+                                  true) {
+                                await HomeWidget.requestPinWidget(
+                                  androidName: reminderWidgetProvider,
+                                );
+                                if (context.mounted) {
+                                  toast(context, '已请求桌面添加；若未弹出确认，请查看下方添加说明');
+                                }
+                              } else if (context.mounted) {
+                                toast(context, '桌面不支持直接添加，请按下方说明手动添加');
                               }
-                            } else if (context.mounted) {
-                              toast(context, '桌面不支持直接添加，请按下方说明手动添加');
-                            }
-                          }),
-                    icon: const Icon(Icons.widgets_outlined),
-                    label: const Text('添加桌面提醒卡片'),
+                            }),
+                      icon: const Icon(Icons.add_to_home_screen_rounded),
+                      label: const Text('添加桌面提醒卡片'),
+                    ),
                   ),
+                  const SizedBox(height: 12),
                   const Note(
                     '如果点击后没有弹窗：长按桌面空白处 → 添加小部件 → 全部应用／Android小组件／支持小部件的应用 → 安伴提醒。小米桌面可能将Android小组件放在列表底部；若直接添加被拦截，请到系统设置 → 应用设置 → 安伴 → 权限管理／其他权限，检查“桌面快捷方式”（若有）。更新安装后先打开安伴，再重新进入桌面小组件列表；仍未出现可重启手机刷新桌面列表。',
                   ),
                 ],
               ),
             ),
-          ListenableBuilder(
-            listenable: widget.reminders,
-            builder: (_, _) => Note(widget.reminders.status),
-          ),
-          const SizedBox(height: 16),
-          if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) ...[
-            ListenableBuilder(
-              listenable: widget.reminders,
-              builder: (_, _) => Note(widget.reminders.backgroundStatus),
-            ),
-            const Note(
-              '小米手机若回桌面/锁屏后漏提醒，请在安伴的系统应用设置中开启后台自启动，并将省电策略设为“无限制”。通知权限与这些后台设置相互独立；系统状态未报告限制也不代表厂商没有限制。',
-            ),
-            TextButton(
-              onPressed: () =>
-                  attempt(context, widget.reminders.openAppSettings),
-              child: const Text('打开应用后台设置'),
-            ),
-            TextButton(
-              onPressed: () =>
-                  attempt(context, widget.reminders.openBatterySettings),
-              child: const Text('打开电池优化设置'),
-            ),
+            const SizedBox(height: 20),
           ],
-          const Note(
-            '安卓用餐和喝水提醒每天循环；同一时刻会合并成一条提示。iOS 保留最多60条待提醒，按类型分配并在打开应用时续排。通知仍受系统权限、省电设置和厂商后台限制影响；系统设置中的“强制停止”会清除 Android 闹钟，无法由应用恢复。',
+
+          // 6. 各类下一次通知排程
+          Surface(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildCardHeader(
+                  icon: Icons.event_available_rounded,
+                  title: '各类下一次通知排程',
+                  subtitle: '系统预计算出的各类别最近一次触发时刻',
+                ),
+                nextReminderTimes(),
+              ],
+            ),
           ),
-          if (widget.reminders.supported)
-            OutlinedButton.icon(
-              onPressed: saving
-                  ? null
-                  : () => attempt(context, () async {
-                      final at = await widget.reminders
-                          .testScheduledNotification(mode: reminderMode);
-                      if (context.mounted) {
-                        toast(
-                          context,
-                          '定时测试已安排在 ${clockText(at)}。请返回桌面或锁屏等待；未允许精确闹钟时可能延迟。',
-                        );
-                      }
-                    }),
-              icon: const Icon(Icons.timer_outlined),
-              label: const Text('1 分钟后测试提醒'),
+          const SizedBox(height: 20),
+
+          // 7. 系统状态与后台保活诊断
+          Surface(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildCardHeader(
+                  icon: Icons.security_update_good_rounded,
+                  title: '后台保活与系统诊断',
+                  subtitle: '避免手机系统杀进程导致漏提醒',
+                ),
+                ListenableBuilder(
+                  listenable: widget.reminders,
+                  builder: (_, _) => Note(widget.reminders.status),
+                ),
+                if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) ...[
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('常驻后台守护（前台服务）'),
+                    subtitle: const Text(
+                      '在系统状态栏保持守护运行，提权免疫常规杀后台，保障长时间熄屏与极端省电模式下提醒准时触发。',
+                    ),
+                    value: keepAlive,
+                    onChanged: saving
+                        ? null
+                        : (val) => setState(() => keepAlive = val),
+                  ),
+                  const SizedBox(height: 10),
+                  ListenableBuilder(
+                    listenable: widget.reminders,
+                    builder: (_, _) => Note(widget.reminders.backgroundStatus),
+                  ),
+                  const SizedBox(height: 10),
+                  const Note(
+                    '小米、华为、OPPO等手机若回桌面/锁屏后漏提醒，请在系统设置中开启“自启动”，并将省电策略设为“无限制”。系统设置中的“强制停止”会清除 Android 闹钟。',
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => attempt(context, widget.reminders.openAppSettings),
+                          child: const Text('应用后台设置', style: TextStyle(fontSize: 12)),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => attempt(context, widget.reminders.openBatterySettings),
+                          child: const Text('电池优化设置', style: TextStyle(fontSize: 12)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
             ),
-          if (widget.reminders.supported)
-            TextButton(
-              onPressed: () =>
-                  attempt(context, widget.reminders.openSystemSettings),
-              child: const Text('打开系统通知设置'),
-            ),
-          if (error != null) Note(error!, urgent: true),
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: saving ? null : save,
-            child: Text(saving ? '正在保存…' : '保存设置'),
+          ),
+
+          if (error != null) ...[
+            const SizedBox(height: 16),
+            Note(error!, urgent: true),
+          ],
+        ],
+      ),
+    ),
+    bottomNavigationBar: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 16,
+            offset: const Offset(0, -4),
           ),
         ],
+      ),
+      child: SafeArea(
+        child: FilledButton.icon(
+          onPressed: saving ? null : save,
+          icon: saving
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+              : const Icon(Icons.check_circle_outline_rounded),
+          label: Text(
+            saving ? '正在保存设置…' : '保存全部提醒设置',
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
+          style: FilledButton.styleFrom(
+            minimumSize: const Size.fromHeight(50),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          ),
+        ),
       ),
     ),
   );

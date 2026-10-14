@@ -6,7 +6,7 @@ import (
 )
 
 func TestLoad(t *testing.T) {
-	for _, key := range []string{"ANBAN_ADDR", "ANBAN_ORIGINS", "DATABASE_URL", "MINIO_ENDPOINT", "MINIO_ACCESS_KEY", "MINIO_SECRET_KEY", "MINIO_USE_SSL", "MINIO_BUCKET", "ANBAN_ANDROID_VERSION_CODE", "ANBAN_ANDROID_VERSION_NAME", "ANBAN_ANDROID_DOWNLOAD_URL", "ANBAN_ANDROID_RELEASE_NOTES", "ANBAN_ADMIN_USERNAME", "ANBAN_ADMIN_PASSWORD", "ANBAN_PUBLIC_URL", "ANBAN_API_URL", "ANBAN_NTFY_URL", "ANBAN_NTFY_PUBLIC_URL", "ANBAN_NTFY_TOKEN"} {
+	for _, key := range []string{"ANBAN_ADDR", "ANBAN_ORIGINS", "DATABASE_URL", "MINIO_ENDPOINT", "MINIO_ACCESS_KEY", "MINIO_SECRET_KEY", "MINIO_USE_SSL", "MINIO_BUCKET", "ANBAN_ANDROID_VERSION_CODE", "ANBAN_ANDROID_VERSION_NAME", "ANBAN_ANDROID_DOWNLOAD_URL", "ANBAN_ANDROID_RELEASE_NOTES", "ANBAN_ADMIN_USERNAME", "ANBAN_ADMIN_PASSWORD", "ANBAN_PUBLIC_URL", "ANBAN_API_URL"} {
 		t.Setenv(key, "")
 	}
 	cfg := Load()
@@ -21,25 +21,6 @@ func TestLoad(t *testing.T) {
 	cfg = Load()
 	if cfg.Addr != ":9000" || cfg.DatabaseURL != "postgres://test" || cfg.MinIOEndpoint != "storage:9000" || cfg.MinIOSecure || len(cfg.Origins) != 2 {
 		t.Fatal("environment overrides lost")
-	}
-}
-
-func TestNtfySinglePublicAddress(t *testing.T) {
-	t.Setenv("ANBAN_NTFY_URL", "")
-	t.Setenv("ANBAN_NTFY_PUBLIC_URL", "")
-	if cfg := Load(); cfg.NtfyPublicURL != "http://127.0.0.1:8026" || cfg.NtfyURL != "http://127.0.0.1:8026" {
-		t.Fatalf("unexpected local defaults: public=%q internal=%q", cfg.NtfyPublicURL, cfg.NtfyURL)
-	}
-	t.Setenv("ANBAN_NTFY_PUBLIC_URL", "http://103.236.97.108:8026")
-	if got := Load().NtfyPublicURL; got != "http://103.236.97.108:8026" {
-		t.Fatalf("public URL override not applied: %q", got)
-	}
-	if got := Load().NtfyURL; got != "http://103.236.97.108:8026" {
-		t.Fatalf("local Go did not use the configured URL: %s", got)
-	}
-	t.Setenv("ANBAN_NTFY_URL", "http://ntfy:80")
-	if cfg := Load(); cfg.NtfyURL != "http://ntfy:80" || cfg.NtfyPublicURL != "http://103.236.97.108:8026" {
-		t.Fatal("Compose must keep its internal URL separate from the phone URL")
 	}
 }
 

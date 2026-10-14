@@ -419,67 +419,101 @@ class _MedicalPageState extends State<MedicalPage> {
             )
           else
             for (final r in items.take(visible))
-              ListTile(
-                contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                leading: Icon(
-                  r.kind == 'folder'
-                      ? Icons.folder_outlined
-                      : r.kind == 'visit'
-                      ? Icons.local_hospital_outlined
-                      : r.kind == 'instruction'
-                      ? r.text('pinned') == 'true'
-                            ? Icons.push_pin
-                            : Icons.note_alt_outlined
-                      : Icons.insert_drive_file_outlined,
-                  color: pine,
-                ),
-                title: Text(
-                  medicalTitle(r),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                subtitle: Text(
-                  r.kind == 'folder'
-                      ? '${all.where((c) => c.text('folderId') == r.id).length} 项'
-                      : r.kind == 'document'
-                      ? '${r.text('category', '档案')} · ${fileSizeText(r)}\n${dayKey(r.at)}'
-                      : r.kind == 'visit'
-                      ? '${r.text('visitType')} · ${dayKey(r.at)}\n${r.text('hospital')} ${r.text('department')}'
-                      : '${dayKey(r.at)} ${clockText(r.at)}\n${r.text('content')}',
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                onTap: busy
-                    ? null
-                    : () => r.kind == 'folder'
-                          ? openFolder(r.id)
-                          : r.kind == 'document'
-                          ? run(() => previewMedia(context, widget.store, r))
-                          : Navigator.push(
-                              context,
-                              MaterialPageRoute<void>(
-                                builder: (_) => MedicalDetailPage(
-                                  store: widget.store,
-                                  id: r.id,
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Surface(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 12,
+                  ),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: busy
+                        ? null
+                        : () => r.kind == 'folder'
+                              ? openFolder(r.id)
+                              : r.kind == 'document'
+                              ? run(() => previewMedia(context, widget.store, r))
+                              : Navigator.push(
+                                  context,
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => MedicalDetailPage(
+                                      store: widget.store,
+                                      id: r.id,
+                                    ),
+                                  ),
+                                ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildMedicalTypeBadge(r),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      medicalTitle(r),
+                                      style: const TextStyle(
+                                        fontSize: 14.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: ink,
+                                      ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  if (r.kind == 'instruction' &&
+                                      r.text('pinned') == 'true')
+                                    const Padding(
+                                      padding: EdgeInsets.only(left: 6),
+                                      child: StatusBadge(
+                                        label: '置顶',
+                                        icon: Icons.push_pin,
+                                        textColor: Color(0xFFC67D00),
+                                        backgroundColor: Color(0xFFFFF8E1),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              _buildMedicalSubtitle(r, all),
+                            ],
+                          ),
+                        ),
+                        PopupMenuButton<String>(
+                          enabled: !busy,
+                          tooltip: '记录操作',
+                          icon: const Icon(
+                            Icons.more_vert,
+                            size: 20,
+                            color: muted,
+                          ),
+                          onSelected: (value) => run(() => action(r, value)),
+                          itemBuilder: (_) => [
+                            const PopupMenuItem(value: 'edit', child: Text('编辑')),
+                            if (['folder', 'document'].contains(r.kind))
+                              const PopupMenuItem(
+                                value: 'move',
+                                child: Text('移动到文件夹'),
+                              ),
+                            if (r.kind == 'instruction')
+                              PopupMenuItem(
+                                value: 'pin',
+                                child: Text(
+                                  r.text('pinned') == 'true' ? '取消置顶' : '置顶',
                                 ),
                               ),
-                            ),
-                trailing: PopupMenuButton<String>(
-                  enabled: !busy,
-                  tooltip: '记录操作',
-                  onSelected: (value) => run(() => action(r, value)),
-                  itemBuilder: (_) => [
-                    const PopupMenuItem(value: 'edit', child: Text('编辑')),
-                    if (['folder', 'document'].contains(r.kind))
-                      const PopupMenuItem(value: 'move', child: Text('移动到文件夹')),
-                    if (r.kind == 'instruction')
-                      PopupMenuItem(
-                        value: 'pin',
-                        child: Text(r.text('pinned') == 'true' ? '取消置顶' : '置顶'),
-                      ),
-                    const PopupMenuItem(value: 'export', child: Text('导出')),
-                    const PopupMenuItem(value: 'delete', child: Text('删除')),
-                  ],
+                            const PopupMenuItem(value: 'export', child: Text('导出')),
+                            const PopupMenuItem(value: 'delete', child: Text('删除')),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
           if (items.length > visible)
@@ -491,6 +525,106 @@ class _MedicalPageState extends State<MedicalPage> {
       );
     },
   );
+
+  Widget _buildMedicalTypeBadge(CareRecord r) {
+    IconData icon;
+    Color iconColor;
+    Color badgeBg;
+
+    if (r.kind == 'folder') {
+      icon = Icons.folder_outlined;
+      iconColor = const Color(0xFFE65100);
+      badgeBg = const Color(0xFFFFF3E0);
+    } else if (r.kind == 'visit') {
+      icon = Icons.local_hospital_outlined;
+      iconColor = pine;
+      badgeBg = const Color(0xFFE8F0E7);
+    } else if (r.kind == 'instruction') {
+      icon = Icons.note_alt_outlined;
+      iconColor = const Color(0xFF1E88E5);
+      badgeBg = const Color(0xFFE1F5FE);
+    } else {
+      final ext = r.text('extension').toLowerCase();
+      if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic'].contains(ext)) {
+        icon = Icons.image_outlined;
+        iconColor = const Color(0xFF2E7D32);
+        badgeBg = const Color(0xFFE8F5E9);
+      } else if (ext == 'pdf') {
+        icon = Icons.picture_as_pdf_outlined;
+        iconColor = const Color(0xFFD32F2F);
+        badgeBg = const Color(0xFFFFEBEE);
+      } else if (['mp4', 'mov', 'm4v'].contains(ext)) {
+        icon = Icons.video_file_outlined;
+        iconColor = const Color(0xFF7B1FA2);
+        badgeBg = const Color(0xFFF3E5F5);
+      } else {
+        icon = Icons.insert_drive_file_outlined;
+        iconColor = const Color(0xFF546E7A);
+        badgeBg = const Color(0xFFECEFF1);
+      }
+    }
+
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: badgeBg,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Icon(icon, color: iconColor, size: 21),
+    );
+  }
+
+  Widget _buildMedicalSubtitle(CareRecord r, List<CareRecord> all) {
+    if (r.kind == 'folder') {
+      final count = all.where((c) => c.text('folderId') == r.id).length;
+      return Text(
+        '文件夹 · 包含 $count 项',
+        style: const TextStyle(fontSize: 12, color: muted),
+      );
+    } else if (r.kind == 'document') {
+      return Text(
+        '${r.text('category', '档案资料')} · ${fileSizeText(r)} · ${dayKey(r.at)}',
+        style: const TextStyle(fontSize: 12, color: muted),
+      );
+    } else if (r.kind == 'visit') {
+      final hospital = r.text('hospital');
+      final dept = r.text('department');
+      final place = [hospital, dept].where((s) => s.isNotEmpty).join(' · ');
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              StatusBadge(
+                label: r.text('visitType', '门诊'),
+                textColor: pine,
+                backgroundColor: const Color(0xFFE8F0E7),
+              ),
+              Text(
+                dayKey(r.at),
+                style: const TextStyle(fontSize: 12, color: muted),
+              ),
+            ],
+          ),
+          if (place.isNotEmpty) ...[
+            const SizedBox(height: 3),
+            Text(place, style: const TextStyle(fontSize: 12, color: ink)),
+          ],
+        ],
+      );
+    } else {
+      return Text(
+        '${dayKey(r.at)} · ${r.text('content')}',
+        style: const TextStyle(fontSize: 12, color: ink),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      );
+    }
+  }
 }
 
 class MedicalDetailPage extends StatefulWidget {

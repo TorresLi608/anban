@@ -74,17 +74,14 @@ void main() {
     reminders.dispose();
   });
 
-  test(
-    'widget uses the same reminder plan in local and remote modes',
-    () async {
-      await updateReminderWidget(CareData(settings: {'notifyMeal': 'true'}));
-      final local = saved['reminder_plan'];
-      await updateReminderWidget(
-        CareData(settings: {'notifyMeal': 'true', 'notifyRemote': 'true'}),
-      );
-      expect(saved['reminder_plan'], local);
-    },
-  );
+  test('widget persists reminder plan for enabled reminders', () async {
+    await updateReminderWidget(CareData(settings: {'notifyMeal': 'true'}));
+    expect(saved['reminder_plan'], isNotNull);
+    expect(saved['reminder_synced'], isNotNull);
+    final list = jsonDecode(saved['reminder_plan'] as String) as List;
+    expect(list, isNotEmpty);
+    expect(list.any((r) => r['label'] == '用餐'), isTrue);
+  });
 
   test('widget errors do not disable the reminder service', () async {
     messenger.setMockMethodCallHandler(
@@ -102,6 +99,29 @@ void main() {
       CareData(settings: {'notifyMeal': 'true', 'mealStart': 'invalid'}),
     );
     expect(calls, isEmpty);
+  });
+
+  test('ios updates widget and sets app group', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    await updateReminderWidget(
+      CareData(settings: {'notifyMeal': 'true'}),
+    );
+    expect(
+      calls.any(
+        (c) =>
+            c.method == 'setAppGroupId' &&
+            (c.arguments as Map)['groupId'] == 'group.app.anban.anban',
+      ),
+      isTrue,
+    );
+    expect(
+      calls.any(
+        (c) =>
+            c.method == 'updateWidget' &&
+            (c.arguments as Map)['ios'] == 'ReminderWidget',
+      ),
+      isTrue,
+    );
   });
 
   for (final supported in [true, false]) {

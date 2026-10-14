@@ -398,29 +398,120 @@ class _RecordFormState extends State<RecordForm> {
                       OutlinedButton.icon(
                         onPressed: saving ? null : pickAt,
                         icon: const Icon(Icons.schedule, size: 18),
-                        label: Text(
-                          '${widget.kind == 'visit'
-                              ? '看诊 / 入院时间'
-                              : widget.kind == 'handover'
-                              ? '班次日期'
-                              : '记录时间'}  ${dayKey(at)} ${clockText(at)}',
+                        label: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            '${widget.kind == 'visit'
+                                ? '看诊/入院'
+                                : widget.kind == 'handover'
+                                ? '班次日期'
+                                : '记录时间'}  ${dayKey(at)} ${clockText(at)}',
+                          ),
                         ),
                       ),
                     const SizedBox(height: 20),
                     if (widget.kind == 'pain') ...[
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('此刻的疼痛程度'),
-                          Text(
-                            '${score.round()} / 10',
-                            style: const TextStyle(
-                              fontSize: 28,
-                              color: pine,
-                              fontWeight: FontWeight.w600,
+                      Builder(
+                        builder: (_) {
+                          final currentScore = score.round();
+                          final painInfo = switch (currentScore) {
+                            0 => (
+                              color: const Color(0xFF2E7D32),
+                              bg: const Color(0xFFE8F5E9),
+                              emoji: '😊',
+                              desc: '轻松无痛 · 身体放松状态良好',
                             ),
-                          ),
-                        ],
+                            1 || 2 || 3 => (
+                              color: const Color(0xFF558B2F),
+                              bg: const Color(0xFFF1F8E9),
+                              emoji: '🙂',
+                              desc: '轻度隐痛 · 不影响日常走动与交流',
+                            ),
+                            4 || 5 || 6 => (
+                              color: const Color(0xFFEF6C00),
+                              bg: const Color(0xFFFFF3E0),
+                              emoji: '😐',
+                              desc: '中度疼痛 · 睡眠与进食受到干扰',
+                            ),
+                            7 || 8 => (
+                              color: const Color(0xFFC62828),
+                              bg: const Color(0xFFFFEBEE),
+                              emoji: '😣',
+                              desc: '重度剧痛 · 建议及时遵医嘱使用止痛方案',
+                            ),
+                            _ => (
+                              color: const Color(0xFF880E4F),
+                              bg: const Color(0xFFFCE4EC),
+                              emoji: '😫',
+                              desc: '极限剧痛 · 难以忍受，需立即寻求医疗支持',
+                            ),
+                          };
+
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 16),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 12,
+                            ),
+                            decoration: BoxDecoration(
+                              color: painInfo.bg,
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(
+                                color: painInfo.color.withValues(alpha: 0.3),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Text(
+                                  painInfo.emoji,
+                                  style: const TextStyle(fontSize: 28),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          const Expanded(
+                                            child: Text(
+                                              '此刻疼痛 (VAS)',
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            '$currentScore / 10',
+                                            style: TextStyle(
+                                              fontSize: 18,
+                                              color: painInfo.color,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        painInfo.desc,
+                                        style: TextStyle(
+                                          color: painInfo.color,
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
                       ),
                       Slider(
                         value: score,
@@ -428,6 +519,7 @@ class _RecordFormState extends State<RecordForm> {
                         max: 10,
                         divisions: 10,
                         label: '${score.round()} 分',
+                        activeColor: score.round() >= 7 ? danger : pine,
                         onChanged: (v) => setState(() => score = v),
                         semanticFormatterCallback: (v) =>
                             '疼痛 ${v.round()} 分，共 10 分',
@@ -727,7 +819,7 @@ class _RecordFormState extends State<RecordForm> {
         ),
       );
     }
-    return TextFormField(
+    final fieldWidget = TextFormField(
       controller: c,
       enabled: !saving,
       readOnly: spec.type == 'datetime',
@@ -783,5 +875,151 @@ class _RecordFormState extends State<RecordForm> {
           ? '请填写${spec.label}'
           : null,
     );
+
+    if (spec.type == 'number') {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          fieldWidget,
+          const SizedBox(height: 8),
+          _buildNumberQuickHelpers(spec, c),
+        ],
+      );
+    }
+
+    return fieldWidget;
+  }
+
+  Widget _buildNumberQuickHelpers(FieldSpec spec, TextEditingController c) {
+    if (spec.key == 'temperature') {
+      final presets = ['36.5', '36.8', '37.2', '37.5', '38.0', '38.5'];
+      return Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          for (final p in presets)
+            ActionChip(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              label: Text('$p℃', style: const TextStyle(fontSize: 11)),
+              onPressed: saving ? null : () => setState(() => c.text = p),
+            ),
+          ActionChip(
+            visualDensity: VisualDensity.compact,
+            avatar: const Icon(Icons.remove, size: 14),
+            label: const Text('0.1', style: TextStyle(fontSize: 11)),
+            onPressed: saving
+                ? null
+                : () {
+                    final cur = double.tryParse(c.text) ?? 36.5;
+                    setState(() => c.text = (cur - 0.1).toStringAsFixed(1));
+                  },
+          ),
+          ActionChip(
+            visualDensity: VisualDensity.compact,
+            avatar: const Icon(Icons.add, size: 14),
+            label: const Text('0.1', style: TextStyle(fontSize: 11)),
+            onPressed: saving
+                ? null
+                : () {
+                    final cur = double.tryParse(c.text) ?? 36.5;
+                    setState(() => c.text = (cur + 0.1).toStringAsFixed(1));
+                  },
+          ),
+        ],
+      );
+    } else if (spec.key == 'heartRate') {
+      final presets = ['65', '72', '78', '85', '95', '105'];
+      return Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          for (final p in presets)
+            ActionChip(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              label: Text(p, style: const TextStyle(fontSize: 11)),
+              onPressed: saving ? null : () => setState(() => c.text = p),
+            ),
+          ActionChip(
+            visualDensity: VisualDensity.compact,
+            avatar: const Icon(Icons.remove, size: 14),
+            label: const Text('1', style: TextStyle(fontSize: 11)),
+            onPressed: saving
+                ? null
+                : () {
+                    final cur = int.tryParse(c.text) ?? 75;
+                    setState(() => c.text = (cur - 1).toString());
+                  },
+          ),
+          ActionChip(
+            visualDensity: VisualDensity.compact,
+            avatar: const Icon(Icons.add, size: 14),
+            label: const Text('1', style: TextStyle(fontSize: 11)),
+            onPressed: saving
+                ? null
+                : () {
+                    final cur = int.tryParse(c.text) ?? 75;
+                    setState(() => c.text = (cur + 1).toString());
+                  },
+          ),
+        ],
+      );
+    } else if (spec.key == 'weight') {
+      return Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          ActionChip(
+            visualDensity: VisualDensity.compact,
+            avatar: const Icon(Icons.remove, size: 14),
+            label: const Text('0.5kg', style: TextStyle(fontSize: 11)),
+            onPressed: saving
+                ? null
+                : () {
+                    final cur = double.tryParse(c.text) ?? 60.0;
+                    setState(() => c.text = (cur - 0.5).toStringAsFixed(1));
+                  },
+          ),
+          ActionChip(
+            visualDensity: VisualDensity.compact,
+            avatar: const Icon(Icons.remove, size: 14),
+            label: const Text('0.1kg', style: TextStyle(fontSize: 11)),
+            onPressed: saving
+                ? null
+                : () {
+                    final cur = double.tryParse(c.text) ?? 60.0;
+                    setState(() => c.text = (cur - 0.1).toStringAsFixed(1));
+                  },
+          ),
+          ActionChip(
+            visualDensity: VisualDensity.compact,
+            avatar: const Icon(Icons.add, size: 14),
+            label: const Text('0.1kg', style: TextStyle(fontSize: 11)),
+            onPressed: saving
+                ? null
+                : () {
+                    final cur = double.tryParse(c.text) ?? 60.0;
+                    setState(() => c.text = (cur + 0.1).toStringAsFixed(1));
+                  },
+          ),
+          ActionChip(
+            visualDensity: VisualDensity.compact,
+            avatar: const Icon(Icons.add, size: 14),
+            label: const Text('0.5kg', style: TextStyle(fontSize: 11)),
+            onPressed: saving
+                ? null
+                : () {
+                    final cur = double.tryParse(c.text) ?? 60.0;
+                    setState(() => c.text = (cur + 0.5).toStringAsFixed(1));
+                  },
+          ),
+        ],
+      );
+    }
+    return const SizedBox.shrink();
   }
 }

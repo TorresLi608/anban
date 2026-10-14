@@ -134,28 +134,6 @@ docker compose config --quiet  # 填好配置后校验，不打印展开后的�
 
 数据库和 MinIO 使用现有服务。Compose 启动 Go 后端与 Next.js 管理端，宿主机端口分别为 `8024`、`8025`，默认绑定 `127.0.0.1`，生产请经 HTTPS 反向代理访问。登录管理端前填写 `ANBAN_ADMIN_USERNAME`（默认 `admin`）和 `ANBAN_ADMIN_PASSWORD`（无默认密码，留空禁用登录），发布 APK 前填写 `ANBAN_PUBLIC_URL`。修改凭据后执行 `docker compose up -d backend`，所有管理端会话失效，App 账号不受影响。旧 `ANBAN_ADMIN_USERS` 授权方式已停用，详见 [管理端说明](admin/README.md)。
 
-ntfy 使用 `.env` 中的 `ANBAN_NTFY_PUBLIC_URL`：本机联调填写 `http://127.0.0.1:8026`，服务器部署时改为 `http://服务器IP:8026`（或反向代理后的 HTTPS 域名）。Compose 会把 ntfy 固定暴露在宿主机 `8026`，后端容器内部地址无需填写；另填 `ANBAN_NTFY_TOKEN` 才会启用后端提醒。
-
-首次部署时，在项目根目录创建 ntfy 发布账号并获取 token（创建账号时按提示输入密码）：
-
-```sh
-docker compose up -d ntfy
-docker compose exec ntfy ntfy user add anban-publisher
-docker compose exec ntfy ntfy access anban-publisher 'anban-*' write
-docker compose exec ntfy ntfy token add --label=anban-backend anban-publisher
-docker compose exec ntfy ntfy token list anban-publisher
-```
-
-把输出中以 `tk_` 开头的完整 token 填入 `.env` 的 `ANBAN_NTFY_TOKEN`，然后执行 `docker compose up -d --build backend`。该 token 继承发布账号权限，不会自动过期，仅供后端使用，手机不要使用它。账号和 token 保存在 `ntfy_data` 卷中；不要执行 `docker compose down -v` 删除此卷。
-
-手机订阅需要另外创建只读账号。在安伴“提醒设置 → 查看订阅信息与后端状态”复制本账号主题，然后运行（把下面的主题占位值替换为复制的完整主题）：
-
-```sh
-docker compose exec ntfy ntfy user add anban-phone
-docker compose exec ntfy ntfy access anban-phone 'anban-你的完整主题ID（App显示的46字符主题）' ro
-```
-
-在手机 ntfy 客户端添加自建服务器、上述只读账号密码并订阅主题，再开启安伴的 ntfy 后端提醒、保存设置并点击后端定时测试。不同安伴账号应分配不同 ntfy 只读账号及对应主题权限。真机的 `127.0.0.1` 指手机自身，本机联调时手机订阅地址应使用电脑的局域网 IP；公网 HTTP 会明文传输认证信息，可将同一 URL 配置换成 HTTPS 反向代理域名。
 
 ```sh
 npm run docker:build   # 构建镜像

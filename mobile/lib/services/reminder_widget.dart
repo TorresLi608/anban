@@ -8,12 +8,21 @@ import '../data/models.dart';
 import '../data/planning.dart';
 
 const reminderWidgetProvider = 'ReminderWidgetProvider';
+const reminderWidgetIOSName = 'ReminderWidget';
+const reminderWidgetAppGroup = 'group.app.anban.anban';
 
 Future<void> updateReminderWidget(CareData data) async {
-  if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+  if (kIsWeb ||
+      (defaultTargetPlatform != TargetPlatform.android &&
+          defaultTargetPlatform != TargetPlatform.iOS)) {
+    return;
+  }
   try {
     final now = DateTime.now();
     final reminders = planReminders(data, now);
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      await HomeWidget.setAppGroupId(reminderWidgetAppGroup);
+    }
     await HomeWidget.saveWidgetData<String>(
       'reminder_plan',
       jsonEncode([
@@ -31,7 +40,10 @@ Future<void> updateReminderWidget(CareData data) async {
       'reminder_synced',
       '${dayKey(now)} ${clockText(now)}',
     );
-    await HomeWidget.updateWidget(androidName: reminderWidgetProvider);
+    await HomeWidget.updateWidget(
+      androidName: reminderWidgetProvider,
+      iOSName: reminderWidgetIOSName,
+    );
     // Use the plugin's scheduler to advance the card without a running Flutter
     // process. The cached plan covers 14 days; opening Anban renews it.
     await HomeWidget.scheduleWidgetUpdates(

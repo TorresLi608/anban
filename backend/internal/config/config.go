@@ -28,13 +28,9 @@ type Config struct {
 	AdminUsername       string
 	AdminPassword       string
 	PublicURL           string
-	NtfyURL             string
-	NtfyPublicURL       string
-	NtfyToken           string
 }
 
 func Load() Config {
-	ntfyPublicURL := strings.TrimRight(strings.TrimSpace(env("ANBAN_NTFY_PUBLIC_URL", "http://127.0.0.1:8026")), "/")
 	return Config{
 		Addr:                env("ANBAN_ADDR", "127.0.0.1:8024"),
 		Origins:             strings.Split(os.Getenv("ANBAN_ORIGINS"), ","),
@@ -51,9 +47,6 @@ func Load() Config {
 		AdminUsername:       strings.ToLower(strings.TrimSpace(env("ANBAN_ADMIN_USERNAME", "admin"))),
 		AdminPassword:       os.Getenv("ANBAN_ADMIN_PASSWORD"),
 		PublicURL:           strings.TrimRight(strings.TrimSpace(os.Getenv("ANBAN_PUBLIC_URL")), "/"),
-		NtfyURL:             strings.TrimRight(strings.TrimSpace(env("ANBAN_NTFY_URL", ntfyPublicURL)), "/"),
-		NtfyPublicURL:       ntfyPublicURL,
-		NtfyToken:           strings.TrimSpace(os.Getenv("ANBAN_NTFY_TOKEN")),
 	}
 }
 
@@ -66,13 +59,6 @@ func env(key, fallback string) string {
 
 // Validate rejects client URLs before attempting any database connection.
 func (c Config) Validate() error {
-	if c.NtfyToken != "" {
-		internal, e1 := url.Parse(c.NtfyURL)
-		public, e2 := url.Parse(c.NtfyPublicURL)
-		if e1 != nil || e2 != nil || internal.Hostname() == "" || (internal.Scheme != "http" && internal.Scheme != "https") || (public.Scheme != "http" && public.Scheme != "https") || public.Hostname() == "" || strings.ContainsAny(c.NtfyToken, "\r\n") || internal.User != nil || public.User != nil || internal.RawQuery != "" || public.RawQuery != "" || internal.Fragment != "" || public.Fragment != "" || (internal.Path != "" && internal.Path != "/") || (public.Path != "" && public.Path != "/") {
-			return errors.New("ntfy 服务地址无效，请检查 ANBAN_NTFY_PUBLIC_URL")
-		}
-	}
 	host, port, err := net.SplitHostPort(c.Addr)
 	n, numberErr := strconv.Atoi(port)
 	if err != nil || strings.ContainsAny(host, "/?#") || numberErr != nil || n < 0 || n > 65535 {

@@ -11,14 +11,14 @@ import '../data/models.dart';
 import '../data/planning.dart';
 import 'account.dart';
 import 'reminder_widget.dart';
-import 'remote_reminders.dart';
 
 const reminderModeNotification = 'notification';
 const reminderModeAlarm = 'alarm';
-const reminderChannelId = 'anban_reminders';
+const reminderChannelId = 'anban_reminders_v2';
 const _backgroundChannel = MethodChannel('app.anban.anban/reminders');
 
 const _legacyReminderChannelIds = {
+  'anban_reminders',
   'meal_alarm',
   'meal_notificationSound',
   'water_alarm',
@@ -48,7 +48,6 @@ class ReminderService extends ChangeNotifier {
   final List<String> warnings = [];
   int pendingCount = 0;
   String backgroundStatus = '';
-  bool _remoteWasEnabled = false;
   bool _checkedRestoredPermission = false;
   bool get supported =>
       !kIsWeb &&
@@ -183,28 +182,15 @@ class ReminderService extends ChangeNotifier {
       final hasEnabledReminder = data.settings.entries.any(
         (entry) => entry.key.startsWith('notify') && entry.value == 'true',
       );
-      final remoteEnabled = data.settings['notifyRemote'] == 'true';
-      if (!remoteEnabled && hasEnabledReminder && !_checkedRestoredPermission) {
+      if (hasEnabledReminder && !_checkedRestoredPermission) {
         _checkedRestoredPermission = true;
         await requestPermission(exactAlarms: false);
       }
-      final remoteNeedsSync =
-          remoteEnabled ||
-          _remoteWasEnabled ||
-          data.settings.containsKey('notifyRemote');
-      if (remoteEnabled && Account.current == null) {
-        throw StateError('请先登录后再同步后端提醒');
-      }
-      if (Account.current != null && remoteNeedsSync) {
-        await Account.reminderRequest(
-          'PUT',
-          body: remoteReminderPlan(data, DateTime.now(), timezone),
-        );
-      }
-      _remoteWasEnabled = remoteEnabled;
-      final scheduled = remoteEnabled
-          ? <PlannedReminder>[]
-          : scheduleReminders(data, DateTime.now(), android: android != null);
+      final scheduled = scheduleReminders(
+        data,
+        DateTime.now(),
+        android: android != null,
+      );
       final previous = await plugin.pendingNotificationRequests();
       final mode = normalizedReminderMode(data.settings['reminderMode']);
       nextTimes = {};
@@ -219,7 +205,7 @@ class ReminderService extends ChangeNotifier {
           notificationDetails: details(p.channel, mode: mode),
           matchDateTimeComponents: p.daily ? DateTimeComponents.time : null,
           androidScheduleMode: exact
-              ? AndroidScheduleMode.exactAllowWhileIdle
+              ? AndroidScheduleMode.alarmClock
               : AndroidScheduleMode.inexactAllowWhileIdle,
           payload: p.channel,
         );
@@ -237,18 +223,16 @@ class ReminderService extends ChangeNotifier {
       }
       pendingCount = (await plugin.pendingNotificationRequests()).length;
       if (android != null) {
-        if (!remoteEnabled && hasEnabledReminder && !exact) {
+        if (hasEnabledReminder && !exact) {
           warnings.add('未允许“闹钟和提醒”，定时通知可能延迟；即时测试不需要此权限');
         }
-        if (!remoteEnabled &&
-            await android.areNotificationsEnabled() == false) {
+        if (await android.areNotificationsEnabled() == false) {
           warnings.add('系统通知权限已关闭');
         }
         for (final channel
             in await android.getNotificationChannels() ??
                 <AndroidNotificationChannel>[]) {
-          if (!remoteEnabled &&
-              channel.id == reminderChannelId &&
+          if (channel.id == reminderChannelId &&
               channel.importance == Importance.none) {
             warnings.add('安伴提醒通知渠道已关闭，请打开系统通知设置');
           }
@@ -266,18 +250,22 @@ class ReminderService extends ChangeNotifier {
           _refillAt!.isBefore(DateTime.now().add(const Duration(minutes: 5)))) {
         _refillAt = DateTime.now().add(const Duration(minutes: 5));
       }
-      _fingerprint = fingerprint;
-      if (remoteEnabled) {
-        nextTimes = {};
-        for (final p in planReminders(data, DateTime.now())) {
-          nextTimes.putIfAbsent(p.channel, () => p.at);
+      if (android != null) {
+        final keepAliveEnabled = data.settings['keepAlive'] != 'false';
+        if (keepAliveEnabled && scheduled.isNotEmpty) {
+          final nextItem = scheduled.first;
+          final timeStr = clockText(nextItem.at);
+          await startKeepAlive(
+            text: '安伴后台守护中 · 下次提醒 $timeStr ${nextItem.title}',
+          );
+        } else {
+          await stopKeepAlive();
         }
       }
-      status = remoteEnabled
-          ? '后端 ntfy 排程已同步。请在 ntfy 客户端订阅账号主题。用餐/喝水每天循环；行程同步未来14天，需在覆盖期结束前打开安伴续排。'
-          : scheduled.isEmpty
+      _fingerprint = fingerprint;
+      status = scheduled.isEmpty
           ? '暂无待提醒事项，请检查各项通知开关与行程时间'
-          : '${android != null ? '用餐与喝水按每天定时循环' : '已为各类提醒保留排程名额，打开应用自动续排'}${exact ? '' : ' · 未授权精确闹钟，可能延迟'}\n插件保存的待提醒：$pendingCount 条（不代表已送达）${warnings.isEmpty ? '' : '\n${warnings.join('\n')}'}';
+          : '${android != null ? '系统级闹钟已排程，支持杀后台与黑屏唤醒' : '已为各类提醒保留排程名额，打开应用自动续排'}${exact ? '' : ' · 未授权精确闹钟，可能延迟'}\n待提醒事项：$pendingCount 条${warnings.isEmpty ? '' : '\n${warnings.join('\n')}'}';
     } catch (e) {
       _fingerprint = '';
       lastError = '提醒安排失败：$e';
@@ -290,21 +278,30 @@ class ReminderService extends ChangeNotifier {
     String channel, {
     String mode = reminderModeAlarm,
   }) {
+    final isAlarm = mode == reminderModeAlarm;
     return NotificationDetails(
       android: AndroidNotificationDetails(
         reminderChannelId,
-        '安伴提醒',
-        channelDescription: '安伴的用餐、喝水和行程提醒',
-        importance: Importance.high,
-        priority: Priority.high,
-        visibility: NotificationVisibility.private,
+        '安伴强提醒',
+        channelDescription: '安伴的用餐、喝水和行程强力提醒（闹钟级防杀）',
+        importance: Importance.max,
+        priority: Priority.max,
+        visibility: NotificationVisibility.public,
         playSound: true,
         enableVibration: true,
-        audioAttributesUsage: AudioAttributesUsage.notification,
+        fullScreenIntent: true,
+        category: isAlarm
+            ? AndroidNotificationCategory.alarm
+            : AndroidNotificationCategory.reminder,
+        audioAttributesUsage: isAlarm
+            ? AudioAttributesUsage.alarm
+            : AudioAttributesUsage.notification,
       ),
       iOS: const DarwinNotificationDetails(
         presentAlert: true,
         presentSound: true,
+        presentBadge: true,
+        interruptionLevel: InterruptionLevel.timeSensitive,
       ),
     );
   }
@@ -337,7 +334,7 @@ class ReminderService extends ChangeNotifier {
       scheduledDate: tz.TZDateTime.from(at, tz.local),
       notificationDetails: details('meal', mode: mode),
       androidScheduleMode: exact
-          ? AndroidScheduleMode.exactAllowWhileIdle
+          ? AndroidScheduleMode.alarmClock
           : AndroidScheduleMode.inexactAllowWhileIdle,
       payload: 'scheduled-test',
     );
@@ -346,6 +343,8 @@ class ReminderService extends ChangeNotifier {
 
   Future<void> _readBackgroundStatus(bool exact) async {
     final lines = ['精确闹钟：${exact ? '已允许' : '未允许，可能延迟'}'];
+    final keepAliveActive = await isKeepAliveRunning();
+    lines.add('常驻后台守护：${keepAliveActive ? '运行中（系统最高防杀保活）' : '未开启'}');
     try {
       final state = await _backgroundChannel.invokeMapMethod<String, dynamic>(
         'getBackgroundStatus',
@@ -377,6 +376,30 @@ class ReminderService extends ChangeNotifier {
 
   Future<void> openAppSettings() =>
       _backgroundChannel.invokeMethod<void>('openAppSettings');
+
+  Future<void> startKeepAlive({String? text}) async {
+    if (defaultTargetPlatform != TargetPlatform.android || kIsWeb) return;
+    try {
+      await _backgroundChannel.invokeMethod('startKeepAlive', {'text': text});
+    } catch (_) {}
+  }
+
+  Future<void> stopKeepAlive() async {
+    if (defaultTargetPlatform != TargetPlatform.android || kIsWeb) return;
+    try {
+      await _backgroundChannel.invokeMethod('stopKeepAlive');
+    } catch (_) {}
+  }
+
+  Future<bool> isKeepAliveRunning() async {
+    if (defaultTargetPlatform != TargetPlatform.android || kIsWeb) return false;
+    try {
+      return await _backgroundChannel.invokeMethod<bool>('isKeepAliveRunning') ??
+          false;
+    } catch (_) {
+      return false;
+    }
+  }
 
   Future<void> testNotification(
     String channel, {

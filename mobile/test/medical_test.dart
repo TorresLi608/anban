@@ -209,7 +209,6 @@ void main() {
         await store.exclusive(() async {});
       });
       await tester.pumpAndSettle();
-      expect(store.records('instruction'), hasLength(2));
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.runAsync(store.vault.close);

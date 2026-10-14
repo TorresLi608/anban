@@ -27,11 +27,6 @@ type Server struct {
 	adminPasswordHash []byte
 	adminSessions     map[string]time.Time
 	publicURL         string
-	ntfyURL           string
-	ntfyPublicURL     string
-	ntfyToken         string
-	pushCancel        context.CancelFunc
-	pushDone          chan struct{}
 }
 
 // New connects the configured services before accepting requests.
@@ -55,21 +50,13 @@ func New(cfg config.Config) (*Server, error) {
 	}
 	s := &Server{db: db, objects: objects, bucket: cfg.MinIOBucket, origins: map[string]bool{}, attempts: map[string][]time.Time{}, adminUsername: cfg.AdminUsername, adminPasswordHash: adminHash, adminSessions: map[string]time.Time{}}
 	s.publicURL = cfg.PublicURL
-	s.ntfyURL, s.ntfyPublicURL, s.ntfyToken = cfg.NtfyURL, cfg.NtfyPublicURL, cfg.NtfyToken
 	for _, origin := range cfg.Origins {
 		s.origins[strings.TrimSpace(origin)] = true
-	}
-	if s.ntfyPublicURL != "" && s.ntfyToken != "" {
-		s.startPushWorker()
 	}
 	return s, nil
 }
 
 func (c *Server) Close() error {
-	if c.pushCancel != nil {
-		c.pushCancel()
-		<-c.pushDone
-	}
 	return c.db.Close()
 }
 
@@ -131,21 +118,11 @@ func (c *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
-	case r.URL.Path == "/api/v1/reminders" || r.URL.Path == "/api/v1/reminders/test":
-		c.remoteReminders(w, r, user)
 	case r.URL.Path == "/api/v1/config/health-options":
 		c.healthOptions(w, r)
 	case r.URL.Path == "/api/v1/auth/me" && r.Method == "GET":
 		writeJSON(w, 200, map[string]string{"userId": user, "username": username})
 	case r.URL.Path == "/api/v1/auth/logout" && r.Method == "POST":
-		if _, err := c.db.ExecContext(r.Context(), `UPDATE anban_push_settings SET enabled=false WHERE user_id=$1`, user); err != nil {
-			fail(w, 500, "无法关闭后端提醒，请重试退出")
-			return
-		}
-		if _, err := c.db.ExecContext(r.Context(), `DELETE FROM anban_push_jobs WHERE user_id=$1`, user); err != nil {
-			fail(w, 500, "无法取消后端提醒，请重试退出")
-			return
-		}
 		if _, err := c.db.ExecContext(r.Context(), `DELETE FROM anban_sessions WHERE token_hash=$1`, tokenHash(token)); err != nil {
 			fail(w, 500, "退出失败")
 			return

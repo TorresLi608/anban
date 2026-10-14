@@ -54,7 +54,126 @@ class HomePage extends StatelessWidget {
               ),
               const SizedBox(height: 14),
 
-              // 1.2 用餐与喝水日常照护双卡（响应式排布）
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+
+        // 2. 快捷记录专区（黄金视线区，大触控热区）
+        Section(
+          '快速记录',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final isWide = constraints.maxWidth >= 540;
+                  final count = isWide ? 4 : 2;
+                  final itemWidth = (constraints.maxWidth - (count - 1) * 10) / count;
+                  return Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      _QuickActionTile(
+                        width: itemWidth,
+                        icon: Icons.monitor_weight_outlined,
+                        iconColor: const Color(0xFF2E7D32),
+                        badgeBg: const Color(0xFFE8F5E9),
+                        title: '记体重',
+                        subtitle: '营养状态监测',
+                        onTap: () => editRecord(context, store, 'weight'),
+                      ),
+                      _QuickActionTile(
+                        width: itemWidth,
+                        icon: Icons.device_thermostat_outlined,
+                        iconColor: const Color(0xFFE65100),
+                        badgeBg: const Color(0xFFFFF3E0),
+                        title: '量体温',
+                        subtitle: '发热感染监测',
+                        onTap: () => editRecord(context, store, 'temperature'),
+                      ),
+                      _QuickActionTile(
+                        width: itemWidth,
+                        icon: Icons.favorite_outline,
+                        iconColor: const Color(0xFFC2185B),
+                        badgeBg: const Color(0xFFFCE4EC),
+                        title: '测心率',
+                        subtitle: '脉搏节律记录',
+                        onTap: () => editRecord(context, store, 'heartRate'),
+                      ),
+                      _QuickActionTile(
+                        width: itemWidth,
+                        icon: Icons.water_drop_outlined,
+                        iconColor: const Color(0xFF0288D1),
+                        badgeBg: const Color(0xFFE1F5FE),
+                        title: '记排泄',
+                        subtitle: '尿液便况观察',
+                        onTap: () => editRecord(context, store, 'urine'),
+                      ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 10),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final isWide = constraints.maxWidth >= 540;
+                  final count = isWide ? 4 : 2;
+                  final itemWidth = (constraints.maxWidth - (count - 1) * 10) / count;
+                  return Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      _QuickActionTile(
+                        width: itemWidth,
+                        icon: Icons.bolt_outlined,
+                        iconColor: const Color(0xFFD32F2F),
+                        badgeBg: const Color(0xFFFFEBEE),
+                        title: '记一次疼痛',
+                        subtitle: '部位与程度评估',
+                        urgentBorder: true,
+                        onTap: () => editRecord(context, store, 'pain'),
+                      ),
+                      _QuickActionTile(
+                        width: itemWidth,
+                        icon: Icons.note_alt_outlined,
+                        iconColor: pine,
+                        badgeBg: const Color(0xFFE8F0E7),
+                        title: '记医嘱',
+                        subtitle: '医生叮嘱随手记',
+                        onTap: () => editRecord(context, store, 'instruction'),
+                      ),
+                      _QuickActionTile(
+                        width: itemWidth,
+                        icon: Icons.folder_outlined,
+                        iconColor: const Color(0xFF455A64),
+                        badgeBg: const Color(0xFFECEFF1),
+                        title: '医疗资料',
+                        subtitle: '检查报告与病历',
+                        onTap: () => navigate(3),
+                      ),
+                      _QuickActionTile(
+                        width: itemWidth,
+                        icon: Icons.edit_note,
+                        iconColor: const Color(0xFF5D4037),
+                        badgeBg: const Color(0xFFEFEBE9),
+                        title: '随便记一笔',
+                        subtitle: '随手记一笔状态',
+                        onTap: () => editRecord(context, store, 'memory'),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+
+        // 3. 照护作息与排程节奏
+        Section(
+          '照护作息节奏',
+          child: Column(
+            children: [
               LayoutBuilder(
                 builder: (context, constraints) {
                   final isWide = constraints.maxWidth >= 540;
@@ -151,8 +270,6 @@ class HomePage extends StatelessWidget {
                 },
               ),
               const SizedBox(height: 12),
-
-              // 1.3 所有已开启提醒项下次时间一览（带实时状态）
               ListenableBuilder(
                 listenable: reminders,
                 builder: (_, _) => Surface(
@@ -239,120 +356,6 @@ class HomePage extends StatelessWidget {
                     ],
                   ),
                 ),
-              ),
-            ],
-          ),
-        ),
-
-        // 2. 快捷记录专区（按用户思维分门别类，大触控热区）
-        Section(
-          '快速记录',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 2.1 高频生命体征与生理指标
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final isWide = constraints.maxWidth >= 540;
-                  final count = isWide ? 4 : 2;
-                  final itemWidth = (constraints.maxWidth - (count - 1) * 10) / count;
-                  return Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      _QuickActionTile(
-                        width: itemWidth,
-                        icon: Icons.monitor_weight_outlined,
-                        iconColor: const Color(0xFF2E7D32),
-                        badgeBg: const Color(0xFFE8F5E9),
-                        title: '记体重',
-                        subtitle: '营养状态监测',
-                        onTap: () => editRecord(context, store, 'weight'),
-                      ),
-                      _QuickActionTile(
-                        width: itemWidth,
-                        icon: Icons.device_thermostat_outlined,
-                        iconColor: const Color(0xFFE65100),
-                        badgeBg: const Color(0xFFFFF3E0),
-                        title: '量体温',
-                        subtitle: '发热感染监测',
-                        onTap: () => editRecord(context, store, 'temperature'),
-                      ),
-                      _QuickActionTile(
-                        width: itemWidth,
-                        icon: Icons.favorite_outline,
-                        iconColor: const Color(0xFFC2185B),
-                        badgeBg: const Color(0xFFFCE4EC),
-                        title: '测心率',
-                        subtitle: '脉搏节律记录',
-                        onTap: () => editRecord(context, store, 'heartRate'),
-                      ),
-                      _QuickActionTile(
-                        width: itemWidth,
-                        icon: Icons.water_drop_outlined,
-                        iconColor: const Color(0xFF0288D1),
-                        badgeBg: const Color(0xFFE1F5FE),
-                        title: '记排泄',
-                        subtitle: '尿液便况观察',
-                        onTap: () => editRecord(context, store, 'urine'),
-                      ),
-                    ],
-                  );
-                },
-              ),
-              const SizedBox(height: 10),
-
-              // 2.2 重点症状（疼痛突出显示）与医疗随手记
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final isWide = constraints.maxWidth >= 540;
-                  final count = isWide ? 4 : 2;
-                  final itemWidth = (constraints.maxWidth - (count - 1) * 10) / count;
-                  return Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      // 疼痛对肿瘤/术后患者极度关键，特别用暖红高亮识别
-                      _QuickActionTile(
-                        width: itemWidth,
-                        icon: Icons.bolt_outlined,
-                        iconColor: const Color(0xFFD32F2F),
-                        badgeBg: const Color(0xFFFFEBEE),
-                        title: '记一次疼痛',
-                        subtitle: '部位与程度评估',
-                        urgentBorder: true,
-                        onTap: () => editRecord(context, store, 'pain'),
-                      ),
-                      _QuickActionTile(
-                        width: itemWidth,
-                        icon: Icons.note_alt_outlined,
-                        iconColor: pine,
-                        badgeBg: const Color(0xFFE8F0E7),
-                        title: '记医嘱',
-                        subtitle: '医生叮嘱随手记',
-                        onTap: () => editRecord(context, store, 'instruction'),
-                      ),
-                      _QuickActionTile(
-                        width: itemWidth,
-                        icon: Icons.folder_outlined,
-                        iconColor: const Color(0xFF455A64),
-                        badgeBg: const Color(0xFFECEFF1),
-                        title: '医疗资料',
-                        subtitle: '检查报告与病历',
-                        onTap: () => navigate(3),
-                      ),
-                      _QuickActionTile(
-                        width: itemWidth,
-                        icon: Icons.edit_note,
-                        iconColor: const Color(0xFF5D4037),
-                        badgeBg: const Color(0xFFEFEBE9),
-                        title: '生活随笔',
-                        subtitle: '随手记一笔状态',
-                        onTap: () => editRecord(context, store, 'memory'),
-                      ),
-                    ],
-                  );
-                },
               ),
             ],
           ),
