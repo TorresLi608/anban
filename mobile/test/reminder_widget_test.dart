@@ -1,9 +1,13 @@
 import 'dart:convert';
 
 import 'package:anban/data/models.dart';
+import 'package:anban/data/store.dart';
+import 'package:anban/data/vault.dart';
+import 'package:anban/screens/settings.dart';
 import 'package:anban/services/reminder_widget.dart';
 import 'package:anban/services/reminders.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -99,4 +103,49 @@ void main() {
     );
     expect(calls, isEmpty);
   });
+
+  for (final supported in [true, false]) {
+    testWidgets('pin support $supported always gives adding instructions', (
+      tester,
+    ) async {
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        calls.add(call);
+        if (call.method == 'isRequestPinWidgetSupported') return supported;
+        if (call.method == 'requestPinWidget') return null;
+        return true;
+      });
+      final vault = await LocalVault.memory();
+      final store = CareStore(vault, CareData());
+      final reminders = ReminderService();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsPage(store: store, reminders: reminders),
+        ),
+      );
+      final button = find.text('添加桌面提醒卡片');
+      await tester.scrollUntilVisible(
+        button,
+        400,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(
+        calls.where((c) => c.method == 'requestPinWidget'),
+        hasLength(supported ? 1 : 0),
+      );
+      expect(
+        find.text(
+          supported ? '已请求桌面添加；若未弹出确认，请查看下方添加说明' : '桌面不支持直接添加，请按下方说明手动添加',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('如果点击后没有弹窗'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      reminders.dispose();
+      store.dispose();
+      await vault.close();
+      debugDefaultTargetPlatformOverride = null;
+    });
+  }
 }

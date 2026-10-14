@@ -3,36 +3,261 @@
     android:id="@+id/reminder_widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@drawable/reminder_widget_background"
     android:orientation="vertical"
-    android:padding="16dp"
-    android:background="@drawable/reminder_widget_background">
+    android:padding="12dp">
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="安伴 · 下次提醒"
-        android:textColor="#1E3A2B"
-        android:textSize="16sp"
-        android:textStyle="bold" />
-
-    <TextView
-        android:id="@+id/reminder_widget_summary"
+    <!-- Header: Brand identity & Sync status -->
+    <RelativeLayout
+        android:id="@+id/reminder_widget_header"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="用餐、喝水和行程提醒"
-        android:ellipsize="end"
-        android:maxLines="5"
-        android:textColor="#26352C"
-        android:textSize="13sp" />
+        android:layout_height="wrap_content">
 
-    <TextView
-        android:id="@+id/reminder_widget_synced"
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentStart="true"
+            android:layout_centerVertical="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:id="@+id/reminder_widget_app_icon"
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:contentDescription="安伴"
+                android:src="@drawable/ic_widget_logo" />
+
+            <TextView
+                android:id="@+id/reminder_widget_app_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="5dp"
+                android:text="安伴"
+                android:textColor="@color/widget_title"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/reminder_widget_tag"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/reminder_widget_tag_bg"
+                android:paddingHorizontal="5dp"
+                android:paddingVertical="1.5dp"
+                android:text="下次提醒"
+                android:textColor="@color/widget_tag_text"
+                android:textSize="9.5sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/reminder_widget_synced"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="点击查看"
+            android:textColor="@color/widget_meta"
+            android:textSize="9.5sp" />
+    </RelativeLayout>
+
+    <!-- Main Content Card Container -->
+    <FrameLayout
+        android:id="@+id/reminder_widget_content_container"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="0dp"
         android:layout_marginTop="8dp"
-        android:textColor="#607566"
-        android:maxLines="1"
-        android:ellipsize="end"
-        android:textSize="10sp" />
+        android:layout_weight="1"
+        android:background="@drawable/reminder_widget_hero_bg"
+        android:paddingHorizontal="10dp"
+        android:paddingVertical="8dp">
+
+        <!-- Active reminders view -->
+        <LinearLayout
+            android:id="@+id/reminder_widget_active_container"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center_vertical"
+            android:orientation="vertical">
+
+            <!-- Hero reminder item -->
+            <LinearLayout
+                android:id="@+id/reminder_widget_hero_row"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <FrameLayout
+                    android:id="@+id/reminder_widget_hero_badge"
+                    android:layout_width="34dp"
+                    android:layout_height="34dp"
+                    android:background="@drawable/reminder_widget_badge_meal">
+
+                    <ImageView
+                        android:id="@+id/reminder_widget_hero_icon"
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:layout_gravity="center"
+                        android:contentDescription="提醒类型"
+                        android:src="@drawable/ic_widget_meal" />
+                </FrameLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:gravity="bottom"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/reminder_widget_hero_time_prefix"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="4dp"
+                            android:text="今天"
+                            android:textColor="@color/widget_time_prefix"
+                            android:textSize="11sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/reminder_widget_hero_time"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:includeFontPadding="false"
+                            android:text="12:30"
+                            android:textColor="@color/widget_time_main"
+                            android:textSize="18sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/reminder_widget_hero_label"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:text="用餐提醒"
+                        android:textColor="@color/widget_item_label"
+                        android:textSize="11.5sp" />
+                </LinearLayout>
+
+                <ImageView
+                    android:id="@+id/reminder_widget_arrow"
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:contentDescription="打开详情"
+                    android:src="@drawable/ic_widget_arrow" />
+            </LinearLayout>
+
+            <!-- Secondary reminders (shown when widget is taller or resized) -->
+            <LinearLayout
+                android:id="@+id/reminder_widget_secondary_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/reminder_widget_sub_item_1"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/reminder_widget_chip_bg"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:paddingHorizontal="7dp"
+                    android:paddingVertical="3dp"
+                    android:text="💧 14:00 喝水"
+                    android:textColor="@color/widget_chip_text"
+                    android:textSize="10.5sp" />
+
+                <TextView
+                    android:id="@+id/reminder_widget_sub_item_2"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:background="@drawable/reminder_widget_chip_bg"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:paddingHorizontal="7dp"
+                    android:paddingVertical="3dp"
+                    android:text="🏥 18:00 PICC护理"
+                    android:textColor="@color/widget_chip_text"
+                    android:textSize="10.5sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Empty state (all reminders done / clear) -->
+        <LinearLayout
+            android:id="@+id/reminder_widget_empty_container"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <FrameLayout
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:background="@drawable/reminder_widget_badge_empty">
+
+                <ImageView
+                    android:id="@+id/reminder_widget_empty_icon"
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:layout_gravity="center"
+                    android:contentDescription="已就绪"
+                    android:src="@drawable/ic_widget_check" />
+            </FrameLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/reminder_widget_empty_title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="今日提醒已就绪"
+                    android:textColor="@color/widget_title"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/reminder_widget_empty_subtitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:text="暂无待办事项 · 点击打开安伴"
+                    android:textColor="@color/widget_meta"
+                    android:textSize="10sp" />
+            </LinearLayout>
+
+            <ImageView
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:contentDescription="打开安伴"
+                android:src="@drawable/ic_widget_arrow" />
+        </LinearLayout>
+
+        <!-- Backward compatible summary text (hidden by default) -->
+        <TextView
+            android:id="@+id/reminder_widget_summary"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:visibility="gone" />
+    </FrameLayout>
 </LinearLayout>

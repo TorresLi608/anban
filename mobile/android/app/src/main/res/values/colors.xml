@@ -1,4 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#FFFFFF</color>
+
+    <!-- Widget Light Mode Palette -->
+    <color name="widget_bg_start">#F7FAF6</color>
+    <color name="widget_bg_end">#EBF3EA</color>
+    <color name="widget_border">#D3E2D1</color>
+
+    <color name="widget_card_bg">#FFFFFF</color>
+    <color name="widget_card_border">#E3EEE2</color>
+
+    <color name="widget_brand_primary">#245B4B</color>
+    <color name="widget_title">#1B3828</color>
+    <color name="widget_tag_bg">#E2EDE0</color>
+    <color name="widget_tag_text">#2A563D</color>
+
+    <color name="widget_time_main">#163323</color>
+    <color name="widget_time_prefix">#447256</color>
+    <color name="widget_item_label">#26382E</color>
+
+    <color name="widget_chip_bg">#F2F7F1</color>
+    <color name="widget_chip_border">#D9E6D8</color>
+    <color name="widget_chip_text">#2A4D37</color>
+
+    <color name="widget_meta">#758C7C</color>
+    <color name="widget_indicator_dot">#34A853</color>
+
+    <!-- Badge Backgrounds (Light) -->
+    <color name="widget_badge_meal_bg">#FFF0E5</color>
+    <color name="widget_badge_water_bg">#E1F3FE</color>
+    <color name="widget_badge_medical_bg">#E6F5EB</color>
+    <color name="widget_badge_default_bg">#EDF2F4</color>
+    <color name="widget_badge_empty_bg">#E8F5E9</color>
 </resources>

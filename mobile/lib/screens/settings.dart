@@ -369,12 +369,18 @@ class _SettingsPageState extends State<SettingsPage> {
                               await HomeWidget.requestPinWidget(
                                 androidName: reminderWidgetProvider,
                               );
+                              if (context.mounted) {
+                                toast(context, '已请求桌面添加；若未弹出确认，请查看下方添加说明');
+                              }
                             } else if (context.mounted) {
-                              toast(context, '请长按桌面 → 小组件 → 安伴提醒，添加到桌面');
+                              toast(context, '桌面不支持直接添加，请按下方说明手动添加');
                             }
                           }),
                     icon: const Icon(Icons.widgets_outlined),
                     label: const Text('添加桌面提醒卡片'),
+                  ),
+                  const Note(
+                    '如果点击后没有弹窗：长按桌面空白处 → 添加小部件 → 全部应用／Android小组件／支持小部件的应用 → 安伴提醒。小米桌面可能将Android小组件放在列表底部；若直接添加被拦截，请到系统设置 → 应用设置 → 安伴 → 权限管理／其他权限，检查“桌面快捷方式”（若有）。更新安装后先打开安伴，再重新进入桌面小组件列表；仍未出现可重启手机刷新桌面列表。',
                   ),
                 ],
               ),

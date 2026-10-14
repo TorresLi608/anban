@@ -16,7 +16,6 @@ import 'screens/records.dart';
 import 'screens/care.dart';
 import 'screens/profile.dart';
 import 'screens/medical.dart';
-import 'screens/settings.dart';
 import 'ui.dart';
 
 Future<void> main() async {
@@ -261,7 +260,9 @@ class _CareShellState extends State<CareShell> with WidgetsBindingObserver {
       if (pending != true || !mounted || openingReminderLink) return;
       openingReminderLink = true;
       try {
-        await openSettings(context, widget.store, widget.reminders);
+        if (selected != 0) {
+          setState(() => selected = 0);
+        }
       } finally {
         openingReminderLink = false;
       }

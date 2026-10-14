@@ -20,7 +20,10 @@ Future<void> updateReminderWidget(CareData data) async {
         for (final reminder in reminders)
           {
             'label': reminderNames[reminder.channel],
+            'channel': reminder.channel,
             'at': reminder.at.millisecondsSinceEpoch,
+            if (reminder.dueAt != null)
+              'due': reminder.dueAt!.millisecondsSinceEpoch,
           },
       ]),
     );

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Widget Dark Mode Palette -->
+    <color name="widget_bg_start">#1D2722</color>
+    <color name="widget_bg_end">#151E1A</color>
+    <color name="widget_border">#2C3C33</color>
+
+    <color name="widget_card_bg">#24322B</color>
+    <color name="widget_card_border">#33453B</color>
+
+    <color name="widget_brand_primary">#5DBF91</color>
+    <color name="widget_title">#E2EFE5</color>
+    <color name="widget_tag_bg">#2F4438</color>
+    <color name="widget_tag_text">#A3D4B6</color>
+
+    <color name="widget_time_main">#FFFFFF</color>
+    <color name="widget_time_prefix">#7DC89E</color>
+    <color name="widget_item_label">#DEEBE1</color>
+
+    <color name="widget_chip_bg">#27372E</color>
+    <color name="widget_chip_border">#394D41</color>
+    <color name="widget_chip_text">#CEE2D3</color>
+
+    <color name="widget_meta">#89A091</color>
+    <color name="widget_indicator_dot">#5DBF91</color>
+
+    <!-- Badge Backgrounds (Dark) -->
+    <color name="widget_badge_meal_bg">#3D2E24</color>
+    <color name="widget_badge_water_bg">#1E313D</color>
+    <color name="widget_badge_medical_bg">#233B2B</color>
+    <color name="widget_badge_default_bg">#2E373B</color>
+    <color name="widget_badge_empty_bg">#233B2B</color>
+</resources>

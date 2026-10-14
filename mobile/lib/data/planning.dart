@@ -89,6 +89,7 @@ class PlannedReminder {
   final String channel, title, body;
   final bool daily;
   final List<String> categories;
+  final DateTime? dueAt;
   PlannedReminder(
     this.at,
     this.channel,
@@ -96,6 +97,7 @@ class PlannedReminder {
     this.body, {
     this.daily = false,
     List<String>? categories,
+    this.dueAt,
   }) : categories = categories ?? [channel];
 }
 
@@ -125,6 +127,7 @@ List<PlannedReminder> scheduleReminders(
         item.title,
         item.body,
         daily: android,
+        dueAt: item.dueAt,
       );
     } else if (!previous.categories.contains(item.channel) &&
         previous.at == item.at) {
@@ -136,6 +139,7 @@ List<PlannedReminder> scheduleReminders(
         '${previous.body}\n${item.body}',
         daily: android,
         categories: ['meal', 'water'],
+        dueAt: item.dueAt,
       );
     }
   }
@@ -172,8 +176,24 @@ List<PlannedReminder> planReminders(
 }) {
   final s = data.settings;
   final result = <PlannedReminder>[];
-  void add(DateTime at, String channel, String title, String body) {
-    if (at.isAfter(now)) result.add(PlannedReminder(at, channel, title, body));
+  void add(
+    DateTime at,
+    String channel,
+    String title,
+    String body, {
+    DateTime? dueAt,
+  }) {
+    if (at.isAfter(now)) {
+      result.add(
+        PlannedReminder(
+          at,
+          channel,
+          title,
+          body,
+          dueAt: dueAt,
+        ),
+      );
+    }
   }
 
   for (var i = 0; i < days; i++) {
@@ -206,6 +226,7 @@ List<PlannedReminder> planReminders(
           category,
           '${journeyCategories[category]}行程提醒',
           '今天有已安排的行程，请打开安伴核对。',
+          dueAt: due,
         );
       } else {
         for (var j = 0; j < count; j++) {
@@ -216,6 +237,7 @@ List<PlannedReminder> planReminders(
             category,
             '${journeyCategories[category]}即将到期',
             '请打开安伴核对下次执行时间。',
+            dueAt: due,
           );
         }
       }

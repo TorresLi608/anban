@@ -162,11 +162,13 @@ class Surface extends StatelessWidget {
   final Widget child;
   final Color color;
   final EdgeInsets padding;
+  final BoxBorder? border;
   const Surface({
     super.key,
     required this.child,
     this.color = Colors.white,
-    this.padding = const EdgeInsets.all(24),
+    this.padding = const EdgeInsets.all(20),
+    this.border,
   });
   @override
   Widget build(BuildContext context) => Container(
@@ -174,7 +176,15 @@ class Surface extends StatelessWidget {
     padding: padding,
     decoration: BoxDecoration(
       color: color,
-      borderRadius: BorderRadius.circular(22),
+      borderRadius: BorderRadius.circular(20),
+      border: border ?? Border.all(color: const Color(0xFFE5ECE3), width: 1),
+      boxShadow: const [
+        BoxShadow(
+          color: Color(0x0A1C2E24),
+          blurRadius: 12,
+          offset: Offset(0, 3),
+        ),
+      ],
     ),
     child: child,
   );
