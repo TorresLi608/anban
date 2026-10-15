@@ -25,7 +25,7 @@ void main() {
     Account.current = null;
     store = CareStore(await LocalVault.memory(), CareData());
     cloudPayload = {
-      'data': CareData(profile: {'name': '云端患者'}).toJson(),
+      'data': CareData(profile: {'name': '云端用户'}).toJson(),
       'files': <String, dynamic>{},
     };
     requests = [];
@@ -98,7 +98,7 @@ void main() {
     throw StateError('Unexpected request: $path');
   });
 
-  Future<void> login({String username = 'patient'}) => Account.login(
+  Future<void> login({String username = 'member'}) => Account.login(
     store,
     Account.apiBase,
     username,
@@ -114,7 +114,7 @@ void main() {
     'restart restores session, loads cloud data and saves without login',
     () async {
       await login();
-      expect(store.data.profile['name'], '云端患者');
+      expect(store.data.profile['name'], '云端用户');
       final saved = await secure.readAll();
       expect(saved.values.any((v) => v.contains('login-secret')), isFalse);
       await store.vault.close();
@@ -124,8 +124,8 @@ void main() {
       requests.clear();
 
       expect(await Account.restore(store), isTrue);
-      expect(Account.current?['username'], 'patient');
-      expect(store.data.profile['name'], '云端患者');
+      expect(Account.current?['username'], 'member');
+      expect(store.data.profile['name'], '云端用户');
       expect(requests, isNot(contains('/api/v1/auth/login')));
       await store.profile({'name': '已修改'});
       expect(cloudPayload['data']['profile']['name'], '已修改');
@@ -141,8 +141,8 @@ void main() {
       expect(await secure.read(key: 'anban-account'), isNull);
       expect(await Account.restore(store), isFalse);
       expect(store.data.profile, isEmpty);
-      await login(username: 'PATIENT');
-      expect(store.data.profile['name'], '云端患者');
+      await login(username: 'MEMBER');
+      expect(store.data.profile['name'], '云端用户');
     },
   );
 
@@ -175,7 +175,7 @@ void main() {
     expect(await Account.restore(store), isFalse);
     expect(requests, isEmpty);
     await login();
-    expect(store.data.profile['name'], '云端患者');
+    expect(store.data.profile['name'], '云端用户');
   });
 
   check(
@@ -186,7 +186,7 @@ void main() {
       final encrypted = await encryptBytes(
         utf8.encode(
           jsonEncode({
-            'data': CareData(profile: {'name': '加密历史患者'}).toJson(),
+            'data': CareData(profile: {'name': '加密历史用户'}).toJson(),
             'files': <String, dynamic>{},
           }),
         ),
@@ -201,10 +201,10 @@ void main() {
       };
 
       await login();
-      expect(store.data.profile['name'], '加密历史患者');
+      expect(store.data.profile['name'], '加密历史用户');
       // 验证已自动调用 PUT /api/v1/vault 转换为明文备份
       expect(cloudPayload.containsKey('ciphertext'), isFalse);
-      expect(cloudPayload['data']['profile']['name'], '加密历史患者');
+      expect(cloudPayload['data']['profile']['name'], '加密历史用户');
     },
   );
 }

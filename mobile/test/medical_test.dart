@@ -62,7 +62,7 @@ Future<CareStore> medicalFixture() async {
   );
   final data = CareData(
     records: [root, child, ...docs, visit, instruction],
-    profile: {'name': '演示患者'},
+    profile: {'name': '演示用户'},
   );
   await vault.save(data);
   return CareStore(vault, data);

@@ -48,7 +48,7 @@ Future<Uint8List> medicalRecordsPdf(
     ),
     pw.SizedBox(height: 12),
     pw.Text(
-      '患者：${data.profile['name'] ?? '未填写'}    导出日期：${dayKey(DateTime.now())}',
+      '称呼：${data.profile['name'] ?? '未填写'}    导出日期：${dayKey(DateTime.now())}',
     ),
     pw.Text(
       '内容由用户记录；关联资料原件可另行导出为压缩包。',

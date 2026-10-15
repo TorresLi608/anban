@@ -37,11 +37,11 @@ void main() {
             },
           ),
         );
-        await store.profile({'name': '患者'});
+        await store.profile({'name': '用户'});
         await store.settings({'largeText': 'true', 'token': 'legacy-token'});
         final decoded = Map<String, dynamic>.from(saved as Map);
         expect(decoded['data']['settings'], {'largeText': 'true'});
-        expect(decoded['data']['profile']['name'], '患者');
+        expect(decoded['data']['profile']['name'], '用户');
         expect(
           objects,
           hasLength(9),
@@ -66,7 +66,7 @@ void main() {
         final pulled = await api.pull();
         final target = await LocalVault.memory();
         await api.loadInto(target, pulled);
-        expect((await target.load()).profile['name'], '患者');
+        expect((await target.load()).profile['name'], '用户');
         expect(await target.attachment(id), [9, 8, 7]);
         await target.close();
         await store.clear();

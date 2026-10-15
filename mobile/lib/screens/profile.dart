@@ -45,12 +45,12 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> editProfile() async {
     const names = {
-      'name': '患者称呼',
+      'name': '称呼',
       'age': '年龄',
       'diagnosis': '确诊日期',
       'doctor': '主治医生',
       'hospital': '常用医院',
-      'note': '基础病情备注',
+      'note': '基础备注',
     };
     final controllers = {
       for (final k in names.keys)
@@ -60,7 +60,7 @@ class _ProfilePageState extends State<ProfilePage> {
     final result = await showDialog<Map<String, String>>(
       context: context,
       builder: (c) => AlertDialog(
-        title: const Text('患者基础档案'),
+        title: const Text('个人档案'),
         content: SizedBox(
           width: 440,
           child: SingleChildScrollView(
@@ -403,9 +403,9 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _buildPatientHeroCard(CareData data) {
+  Widget _buildProfileHeroCard(CareData data) {
     final profile = data.profile;
-    final name = profile['name']?.trim().isNotEmpty == true ? profile['name']! : '未命名患者';
+    final name = profile['name']?.trim().isNotEmpty == true ? profile['name']! : '未填写称呼';
     final age = profile['age']?.trim().isNotEmpty == true ? '${profile['age']} 岁' : '年龄待补充';
     final doctor = profile['doctor']?.trim().isNotEmpty == true ? profile['doctor']! : '医生待补充';
     final hospital = profile['hospital']?.trim().isNotEmpty == true ? profile['hospital']! : '医院待补充';
@@ -524,7 +524,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            diagnosis.isNotEmpty ? '确诊日期：$diagnosis' : '建议完善确诊与就诊信息',
+                            diagnosis.isNotEmpty ? '确诊日期：$diagnosis' : '完善个人档案，记录日常点滴',
                             style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.8),
                               fontSize: 12,
@@ -830,8 +830,8 @@ class _ProfilePageState extends State<ProfilePage> {
             child: LinearProgressIndicator(),
           ),
 
-        // 1. 患者健康名片 Hero Card
-        _buildPatientHeroCard(data),
+        // 1. 个人档案名片 Hero Card
+        _buildProfileHeroCard(data),
 
         // 2. 数据与隐私安全卡片
         Surface(
@@ -941,7 +941,7 @@ class _ProfilePageState extends State<ProfilePage> {
               _buildSectionHeader(
                 icon: Icons.info_outline_rounded,
                 title: '关于安伴',
-                subtitle: '为肿瘤患者及家属打造的温情照护助手',
+                subtitle: '安心记录日常，温暖陪伴家人',
               ),
               if (AppUpdate.supported) ...[
                 _buildModernOption(

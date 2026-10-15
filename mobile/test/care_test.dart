@@ -108,14 +108,14 @@ void main() {
     () async {
       // 1. 明文备份与还原
       final payload = {
-        'data': CareData(profile: {'name': '测试患者'}).toJson(),
+        'data': CareData(profile: {'name': '测试用户'}).toJson(),
         'files': {'file1': base64Encode([1, 2, 3])},
       };
       final plain = await sealBackup(payload);
       expect(plain['version'], 2);
       expect(plain['algorithm'], 'PLAIN');
       final opened = await openBackup(plain);
-      expect(opened['data']['profile']['name'], '测试患者');
+      expect(opened['data']['profile']['name'], '测试用户');
 
       // 2. 兼容旧版 AES-256-GCM 加密备份
       const password = 'a-long-backup-password';
@@ -132,7 +132,7 @@ void main() {
         'salt': base64Encode(salt),
         ...encryptedBytes,
       };
-      expect((await openBackup(legacy, password))['data']['profile']['name'], '测试患者');
+      expect((await openBackup(legacy, password))['data']['profile']['name'], '测试用户');
       await expectLater(
         openBackup(legacy, 'a-wrong-long-password'),
         throwsA(isA<SecretBoxAuthenticationError>()),

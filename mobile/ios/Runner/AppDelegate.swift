@@ -19,7 +19,7 @@ import UserNotifications
         values.isExcludedFromBackup = true
         try support.setResourceValues(values)
       } catch {
-        // No patient data has been opened yet; do not silently enable system backup.
+        // No user data has been opened yet; do not silently enable system backup.
         fatalError("Unable to exclude private storage from system backup")
       }
     }

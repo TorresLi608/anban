@@ -4,7 +4,7 @@
 - Existing photos capped at 9 per health record; new archive should use one document record per file, not the photo collection.
 - VaultSync eagerly downloads/decrypts all attachments on login and rereads all on save; hard 20 MB/file and 100 MB total. Must refactor to lazy remote attachment loading and no total/count cap.
 - LocalVault is in-memory encrypted Sembast. Account login/refresh currently restore a fully downloaded backup into a fresh vault.
-- Backend file API accepts existing encrypted envelopes up to ~20 MB clear content, owner-scoped; chunking can reuse endpoint without exposing patient files.
+- Backend file API accepts existing encrypted envelopes up to ~20 MB clear content, owner-scoped; chunking can reuse endpoint without exposing user files.
 - ReminderService schedules earliest 60 notifications on BOTH platforms, sequential numeric IDs, cancelAll before every replan; uses Android exactAllowWhileIdle with independent meal/water notifications even at identical times. Need trace overlapping alarms/channel behavior and platform limits.
 - Existing PDF export and image/video/PDF preview can be reused. Unknown file types currently fall through to audio, which must be corrected.
 - User confirmed single-file 200 MB cap; no per-folder/upload count cap.

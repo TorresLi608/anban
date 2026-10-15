@@ -44,7 +44,7 @@ void main() {
       await updateReminderWidget(
         CareData(
           settings: {'notifyMeal': 'true', 'notifyWater': 'false'},
-          profile: {'name': 'private-patient-name'},
+          profile: {'name': 'private-user-name'},
           records: [
             CareRecord(kind: 'memory', fields: {'title': 'private-content'}),
           ],

@@ -662,7 +662,7 @@ class _CompanionPageState extends State<CompanionPage>
                                   ),
                                 ),
                                 Text(
-                                  recording ? '点击右侧按钮即可完成并加密保存' : '把想说给家人或患者的心里话保存下来',
+                                  recording ? '点击右侧按钮即可完成并加密保存' : '把想说给家人的心里话保存下来',
                                   style: const TextStyle(color: muted, fontSize: 11.5),
                                 ),
                               ],
