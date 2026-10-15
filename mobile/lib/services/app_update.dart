@@ -40,7 +40,7 @@ class AndroidRelease {
         notes is! String ||
         notes.length > 4000 ||
         uri == null ||
-        !uri.isScheme('https') ||
+        !(uri.isScheme('http') || uri.isScheme('https')) ||
         uri.host.isEmpty ||
         uri.userInfo.isNotEmpty) {
       throw const FormatException('更新信息无效，请稍后重试');

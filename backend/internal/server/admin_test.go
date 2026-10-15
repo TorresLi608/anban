@@ -48,7 +48,7 @@ func TestAdminIntegration(t *testing.T) {
 	u.RawQuery = query.Encode()
 	cfg.DatabaseURL = u.String()
 	cfg.AdminUsername, cfg.AdminPassword = "admin_test", randomID()
-	cfg.PublicURL = "https://downloads.example.test"
+	cfg.PublicURL = "http://downloads.example.test:8024"
 	cfg.AndroidVersionCode, cfg.AndroidVersionName, cfg.AndroidDownloadURL, cfg.AndroidReleaseNotes = "", "", "", ""
 	s, err := New(cfg)
 	if err != nil {
@@ -215,7 +215,7 @@ func TestAdminIntegration(t *testing.T) {
 		t.Fatal("version downgrade accepted")
 	}
 	release.VersionCode = 3
-	release.DownloadURL = "http://example.com/unsafe.apk"
+	release.DownloadURL = "file:///unsafe.apk"
 	payload["release"] = release
 	if request("PUT", "/api/v1/admin/android-release", token, payload).Code != 400 {
 		t.Fatal("unsafe download accepted")

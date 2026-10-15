@@ -78,7 +78,11 @@ export function ReleaseForm({ initial }: { initial: ReleaseState }) {
           return;
         }
         const url = new URL(result.downloadUrl);
-        if (url.protocol !== "https:" || url.username || url.password)
+        if (
+          !["http:", "https:"].includes(url.protocol) ||
+          url.username ||
+          url.password
+        )
           throw new Error("Invalid upload URL");
         update("downloadUrl", url.href);
         setUpload({ busy: false, progress: 100, error: "", name: file.name });

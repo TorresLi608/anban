@@ -59,7 +59,7 @@ python3 -m http.server 7357 --bind 127.0.0.1 --directory build/web
 
 Android 每次启动自动检查一次，发现更高的 `versionCode` 后显示新版说明，用户点击“前往下载”打开外部浏览器；下载完成后由用户按系统提示安装。登录页及“我的 → 使用偏好 → 检查更新”也可手动检查。自动检查失败保持安静，不影响登录和使用；iOS / Web 不显示此功能。
 
-版本信息现在通过 Web 管理端维护，保存到 PostgreSQL 后立即生效。先按 [管理端说明](admin/README.md) 配置独立的管理端账号密码和公开下载域名，然后运行：
+版本信息现在通过 Web 管理端维护，保存到 PostgreSQL 后立即生效。先按 [管理端说明](admin/README.md) 配置独立的管理端账号密码，下载链接复用现有 API 地址，然后运行：
 
 ```sh
 npm --prefix admin ci
@@ -132,7 +132,7 @@ chmod 600 .env
 docker compose config --quiet  # 填好配置后校验，不打印展开后的凭据
 ```
 
-数据库和 MinIO 使用现有服务。Compose 启动 Go 后端与 Next.js 管理端，宿主机端口分别为 `8024`、`8025`，默认绑定 `127.0.0.1`，生产请经 HTTPS 反向代理访问。登录管理端前填写 `ANBAN_ADMIN_USERNAME`（默认 `admin`）和 `ANBAN_ADMIN_PASSWORD`（无默认密码，留空禁用登录），发布 APK 前填写 `ANBAN_PUBLIC_URL`。修改凭据后执行 `docker compose up -d backend`，所有管理端会话失效，App 账号不受影响。旧 `ANBAN_ADMIN_USERS` 授权方式已停用，详见 [管理端说明](admin/README.md)。
+数据库和 MinIO 使用现有服务。Compose 启动 Go 后端与 Next.js 管理端，宿主机端口分别为 `8024`、`8025`，默认绑定 `127.0.0.1`，生产请经 HTTPS 反向代理访问。登录管理端前填写 `ANBAN_ADMIN_USERNAME`（默认 `admin`）和 `ANBAN_ADMIN_PASSWORD`（无默认密码，留空禁用登录）。APK 下载链接默认复用 `ANBAN_API_URL`，支持 HTTP / HTTPS 和 IP:端口，无需新增域名；`ANBAN_PUBLIC_URL` 仅用于可选覆盖。修改凭据后执行 `docker compose up -d backend`，所有管理端会话失效，App 账号不受影响。旧 `ANBAN_ADMIN_USERS` 授权方式已停用，详见 [管理端说明](admin/README.md)。
 
 
 ```sh

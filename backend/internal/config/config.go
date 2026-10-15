@@ -31,6 +31,11 @@ type Config struct {
 }
 
 func Load() Config {
+	publicURL := strings.TrimRight(strings.TrimSpace(os.Getenv("ANBAN_PUBLIC_URL")), "/")
+	// APK downloads use the same backend address as the app unless overridden.
+	if publicURL == "" {
+		publicURL = strings.TrimRight(strings.TrimSpace(os.Getenv("ANBAN_API_URL")), "/")
+	}
 	return Config{
 		Addr:                env("ANBAN_ADDR", "127.0.0.1:8024"),
 		Origins:             strings.Split(os.Getenv("ANBAN_ORIGINS"), ","),
@@ -46,7 +51,7 @@ func Load() Config {
 		AndroidReleaseNotes: strings.TrimSpace(os.Getenv("ANBAN_ANDROID_RELEASE_NOTES")),
 		AdminUsername:       strings.ToLower(strings.TrimSpace(env("ANBAN_ADMIN_USERNAME", "admin"))),
 		AdminPassword:       os.Getenv("ANBAN_ADMIN_PASSWORD"),
-		PublicURL:           strings.TrimRight(strings.TrimSpace(os.Getenv("ANBAN_PUBLIC_URL")), "/"),
+		PublicURL:           publicURL,
 	}
 }
 
@@ -72,8 +77,8 @@ func (c Config) Validate() error {
 	}
 	if c.PublicURL != "" {
 		u, err := url.Parse(c.PublicURL)
-		if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
-			return errors.New("ANBAN_PUBLIC_URL 必须是公开可访问的 HTTPS 后端域名，不含路径、查询参数或账号密码")
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
+			return errors.New("APK 下载后端地址（ANBAN_PUBLIC_URL 或 ANBAN_API_URL）必须是 HTTP 或 HTTPS 地址，不含路径、查询参数或账号密码")
 		}
 	}
 	if release := c.InitialAndroidRelease(); release != nil {
@@ -94,8 +99,8 @@ func (r AndroidRelease) Validate() error {
 		return errors.New("版本编号须为 1–2100000000；版本名称不能为空且最多 64 字节；更新说明最多 4000 字节")
 	}
 	u, err := url.Parse(r.DownloadURL)
-	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil {
-		return errors.New("下载地址必须是无账号密码的 HTTPS 链接")
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil {
+		return errors.New("下载地址必须是无账号密码的 HTTP 或 HTTPS 链接")
 	}
 	return nil
 }

@@ -12,7 +12,7 @@ Next.js App Router + TypeScript + Tailwind CSS v4 + shadcn/ui。管理员登录�
 ANBAN_ADMIN_USERNAME=admin
 ANBAN_ADMIN_PASSWORD='替换为你自己的管理端密码'
 ANBAN_ADMIN_API_URL=http://127.0.0.1:8024
-ANBAN_PUBLIC_URL=https://你的Go后端域名
+ANBAN_PUBLIC_URL=  # 默认复用 ANBAN_API_URL，无需填写
 ANBAN_ADMIN_ADDR=127.0.0.1:8025
 ```
 
@@ -20,7 +20,7 @@ ANBAN_ADMIN_ADDR=127.0.0.1:8025
 
 旧 `ANBAN_ADMIN_USERS` 授权方式已停用。升级后填写上述两个新变量，并重新构建、启动后端与管理端：`docker compose up -d --build`。原 App 账号、密码和资料保留，原 App 会话无法访问管理端。
 
-`ANBAN_PUBLIC_URL` 是手机和浏览器均可访问的 **Go 后端 HTTPS 域名**，不是管理端域名，也不是 MinIO 控制台。不含路径或查询参数。APK 上传后生成 `${ANBAN_PUBLIC_URL}/api/v1/app/android-apk/<随机ID>.apk`。未配置时可以登录和编辑健康选项，但不能上传 APK。
+APK 下载直接复用现有 `ANBAN_API_URL`，支持 **HTTP / HTTPS、IP 和端口**，无需新增域名。例如 `ANBAN_API_URL=http://103.236.97.108:8024`，上传后生成 `http://103.236.97.108:8024/api/v1/app/android-apk/<随机ID>.apk`。文件保存在现有 MinIO 私有桶中，浏览器通过 Go 后端公开接口下载，无需登录。`ANBAN_PUBLIC_URL` 仅作为可选覆盖；地址须能从手机访问，不带路径或查询参数。两者都为空时才需要补充地址。
 
 `ANBAN_ADMIN_API_URL` 仅供 Next.js 服务器连接 Go 后端，不会发送到浏览器。Docker Compose 内部自动使用 `http://backend:8024`，无需额外配置 CORS。浏览器令牌保存在 HttpOnly、SameSite=Strict Cookie 中，有效期 8 小时；根据浏览器的访问协议设置 Secure，支持 HTTP IP 直连，并在 HTTPS 访问时启用 Secure。HTTP 不加密账号密码和会话，公网正式部署应使用 HTTPS。Go 后端只保存密码的 bcrypt 哈希和会话令牌的 SHA-256 摘要，管理端会话存于进程内存，退出或重启后端后失效。当前适用于单个 Go 后端实例；扩展多实例前需改用共享会话存储。
 

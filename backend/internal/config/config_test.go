@@ -22,6 +22,21 @@ func TestLoad(t *testing.T) {
 	if cfg.Addr != ":9000" || cfg.DatabaseURL != "postgres://test" || cfg.MinIOEndpoint != "storage:9000" || cfg.MinIOSecure || len(cfg.Origins) != 2 {
 		t.Fatal("environment overrides lost")
 	}
+	for _, apiURL := range []string{"https://api.example.com", "http://103.236.97.108:8024", "http://10.0.2.2:8024"} {
+		t.Setenv("ANBAN_API_URL", " "+apiURL+"/ ")
+		cfg = Load()
+		if cfg.PublicURL != apiURL {
+			t.Fatalf("public URL did not fall back to API URL: %q", cfg.PublicURL)
+		}
+		if err := cfg.Validate(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("ANBAN_PUBLIC_URL", "https://downloads.example.com")
+	cfg = Load()
+	if cfg.PublicURL != "https://downloads.example.com" {
+		t.Fatalf("explicit public URL was not preferred: %q", cfg.PublicURL)
+	}
 }
 
 func TestAdminCredentials(t *testing.T) {
@@ -61,7 +76,14 @@ func TestAndroidUpdateConfig(t *testing.T) {
 			t.Fatalf("invalid version accepted: %q", code)
 		}
 	}
-	for _, link := range []string{"", "http://example.com/a.apk", "https:///a.apk", "https://user:pass@example.com/a.apk", "intent://install"} {
+	for _, link := range []string{"http://103.236.97.108:8024/anban.apk", "https://downloads.example.com/anban.apk"} {
+		cfg := valid
+		cfg.AndroidDownloadURL = link
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("download URL rejected: %q: %v", link, err)
+		}
+	}
+	for _, link := range []string{"", "file:///a.apk", "https:///a.apk", "https://user:pass@example.com/a.apk", "http://user:pass@example.com/a.apk", "intent://install"} {
 		cfg := valid
 		cfg.AndroidDownloadURL = link
 		if cfg.Validate() == nil {
@@ -92,12 +114,14 @@ func TestListenAddress(t *testing.T) {
 }
 
 func TestPublicDownloadOrigin(t *testing.T) {
-	for _, origin := range []string{"http://api.example.com", "https://user:pass@api.example.com", "https://api.example.com/path", "https://api.example.com?x=1", "https://api.example.com#fragment"} {
+	for _, origin := range []string{"file:///a.apk", "http:///a.apk", "https://user:pass@api.example.com", "https://api.example.com/path", "https://api.example.com?x=1", "https://api.example.com#fragment"} {
 		if (Config{Addr: ":8024", PublicURL: origin}).Validate() == nil {
 			t.Fatalf("invalid public origin accepted: %s", origin)
 		}
 	}
-	if err := (Config{Addr: ":8024", PublicURL: "https://api.example.com"}).Validate(); err != nil {
-		t.Fatal(err)
+	for _, origin := range []string{"https://api.example.com", "http://103.236.97.108:8024"} {
+		if err := (Config{Addr: ":8024", PublicURL: origin}).Validate(); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

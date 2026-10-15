@@ -21,7 +21,7 @@ func (c *Server) uploadAPK(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if c.publicURL == "" {
-		fail(w, 503, "安装包上传尚未配置下载域名，请先设置 ANBAN_PUBLIC_URL")
+		fail(w, 503, "请配置手机可访问的后端地址 ANBAN_API_URL（或 ANBAN_PUBLIC_URL），支持 HTTP 和 HTTPS")
 		return
 	}
 	_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(10 * time.Minute))

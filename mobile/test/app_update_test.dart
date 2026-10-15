@@ -10,7 +10,7 @@ import 'package:http/testing.dart';
 const release = {
   'versionCode': 2,
   'versionName': '1.0.1',
-  'downloadUrl': 'https://downloads.example.com/anban.apk',
+  'downloadUrl': 'http://103.236.97.108:8024/api/v1/app/android-apk/example.apk',
   'releaseNotes': '修复问题',
 };
 
@@ -19,6 +19,13 @@ void main() {
 
   test('rejects invalid versions and unsafe download links', () {
     expect(AndroidRelease.fromJson(release).versionCode, 2);
+    expect(
+      AndroidRelease.fromJson({
+        ...release,
+        'downloadUrl': 'https://downloads.example.com/anban.apk',
+      }).downloadUrl.scheme,
+      'https',
+    );
     for (final invalid in [
       null,
       [],
@@ -28,7 +35,7 @@ void main() {
       {...release, 'versionName': ' '},
       {...release, 'releaseNotes': 42},
       for (final link in [
-        'http://a.test/a.apk',
+        'file:///a.apk',
         'intent://install',
         'https:///a.apk',
         'https://user:pass@a.test/a.apk',
