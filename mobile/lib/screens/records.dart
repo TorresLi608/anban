@@ -114,6 +114,8 @@ class _RecordsPageState extends State<RecordsPage> {
                           ? '暂无历史记录，点击右上角添加第一条'
                           : '累计 ${items.length} 笔记录 · 最新: ${_formatMetricValue(latest)}',
                       style: const TextStyle(fontSize: 11.5, color: muted),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
@@ -209,17 +211,23 @@ class _RecordsPageState extends State<RecordsPage> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  Text(
+                                    _formatMetricValue(r),
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: ink,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
                                   Row(
                                     children: [
-                                      Text(
-                                        _formatMetricValue(r),
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                          color: ink,
-                                        ),
+                                      const Icon(
+                                        Icons.access_time_rounded,
+                                        size: 12,
+                                        color: muted,
                                       ),
-                                      const Spacer(),
+                                      const SizedBox(width: 4),
                                       Text(
                                         '${dayKey(r.at)} ${clockText(r.at)}',
                                         style: const TextStyle(
@@ -304,12 +312,17 @@ class _RecordsPageState extends State<RecordsPage> {
                                                   color: Color(0xFF1E88E5),
                                                 ),
                                                 const SizedBox(width: 4),
-                                                Text(
-                                                  r.text('filename', '1 个附件'),
-                                                  style: const TextStyle(
-                                                    fontSize: 11,
-                                                    color: Color(0xFF1565C0),
-                                                    fontWeight: FontWeight.w600,
+                                                ConstrainedBox(
+                                                  constraints: const BoxConstraints(maxWidth: 160),
+                                                  child: Text(
+                                                    r.text('filename', '1 个附件'),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: const TextStyle(
+                                                      fontSize: 11,
+                                                      color: Color(0xFF1565C0),
+                                                      fontWeight: FontWeight.w600,
+                                                    ),
                                                   ),
                                                 ),
                                               ],
@@ -417,15 +430,17 @@ class PainChart extends StatelessWidget {
       children: [
         Row(
           children: [
-            Text(
-              days == 1 ? '今日每次疼痛评分' : '每日最高疼痛评分（缺测不连线）',
-              style: const TextStyle(
-                color: ink,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
+            Expanded(
+              child: Text(
+                days == 1 ? '今日每次疼痛评分' : '每日最高疼痛评分（缺测不连线）',
+                style: const TextStyle(
+                  color: ink,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
-            const Spacer(),
+            const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
