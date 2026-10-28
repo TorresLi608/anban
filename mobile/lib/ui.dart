@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'data/models.dart';
+import 'data/planning.dart';
 import 'data/store.dart';
 
 const pine = Color(0xFF245B4B);
@@ -302,6 +303,7 @@ String recordTitle(CareRecord r) => switch (r.kind) {
   'symptom' => '${r.text('name')} · ${r.text('severity')}度',
   'temperature' => '体温 ${r.text('temperature')} ℃',
   'heartRate' => '心率 ${r.text('heartRate')} 次/分',
+  'bloodOxygen' => '血氧 ${r.text('bloodOxygen')} %',
   'memory' => r.text('title', '随便记一笔'),
   'vital' =>
     '体温 ${r.text('temperature', '—')} ℃ · 体重 ${r.text('weight', '—')} kg',
@@ -309,6 +311,15 @@ String recordTitle(CareRecord r) => switch (r.kind) {
   'dose' => '${r.text('name')} · ${r.text('dose')}',
   'handover' => '${r.text('caregiver')}的交接',
   'mood' => '${r.text('role')} · ${r.text('mood')}',
+  'tumorMarker' => r.text('summary').isNotEmpty
+      ? '肿瘤标志物 · ${r.text('summary')}'
+      : '肿瘤标志物12项检测',
+  'journey' => r.text('category') == 'chemo' && formatChemoStage(r).isNotEmpty
+      ? '化疗 · ${formatChemoStage(r)}'
+      : (journeyCategories[r.text('category')] ?? r.text('title', '医疗行程')),
+  'journeyEntry' => formatChemoStage(r).isNotEmpty
+      ? '化疗记录 · ${formatChemoStage(r)}'
+      : '行程记录',
   _ => r.text('title', '未命名'),
 };
 String recordSummary(CareRecord r) => switch (r.kind) {
@@ -325,9 +336,15 @@ String recordSummary(CareRecord r) => switch (r.kind) {
   ].where((s) => s.isNotEmpty).join(' · '),
   'temperature' => r.text('note'),
   'heartRate' => r.text('note'),
+  'bloodOxygen' => r.text('note'),
   'memory' => [
     r.text('note'),
     r.text('filename'),
+  ].where((s) => s.isNotEmpty).join(' · '),
+  'tumorMarker' => [
+    r.text('hospital'),
+    r.text('summary'),
+    r.text('note'),
   ].where((s) => s.isNotEmpty).join(' · '),
   'vital' =>
     '进食：${r.text('food', '未填')} · 睡眠 ${r.text('sleep', '—')} 小时 · 排便：${r.text('bowel', '未填')}',
@@ -337,6 +354,12 @@ String recordSummary(CareRecord r) => switch (r.kind) {
   'handover' =>
     '${r.text('condition')}\n用药：${r.text('medication')}\n异常：${r.text('abnormal')}\n明日注意：${r.text('next')}',
   'mood' => r.text('note'),
+  'journey' || 'journeyEntry' => [
+    if (formatChemoStage(r).isNotEmpty) formatChemoStage(r),
+    if (r.text('last').isNotEmpty) '上次：${displayDate(r.text('last'))}',
+    if (r.text('next').isNotEmpty) '下次：${displayDate(r.text('next'))}',
+    r.text('note'),
+  ].where((s) => s.isNotEmpty).join(' · '),
   _ => r.text('note'),
 };
 
@@ -344,11 +367,13 @@ IconData kindIcon(String kind) => switch (kind) {
   'weight' => Icons.monitor_weight_outlined,
   'temperature' => Icons.device_thermostat_outlined,
   'heartRate' => Icons.favorite_outline,
+  'bloodOxygen' => Icons.air,
   'stool' || 'urine' => Icons.water_drop_outlined,
   'pain' => Icons.bolt_outlined,
   'symptom' => Icons.healing_outlined,
   'instruction' => Icons.note_alt_outlined,
   'journey' || 'journeyEntry' => Icons.local_hospital_outlined,
+  'tumorMarker' => Icons.biotech_outlined,
   _ => Icons.edit_note,
 };
 
@@ -356,11 +381,13 @@ Color kindColor(String kind) => switch (kind) {
   'weight' => const Color(0xFF2E7D32),
   'temperature' => const Color(0xFFE65100),
   'heartRate' => const Color(0xFFC2185B),
+  'bloodOxygen' => const Color(0xFF00838F),
   'stool' || 'urine' => const Color(0xFF0288D1),
   'pain' => const Color(0xFFD32F2F),
   'symptom' => const Color(0xFF7B1FA2),
   'instruction' => pine,
   'journey' || 'journeyEntry' => pine,
+  'tumorMarker' => const Color(0xFF00796B),
   _ => const Color(0xFF5D4037),
 };
 
@@ -368,11 +395,13 @@ Color kindBadgeBg(String kind) => switch (kind) {
   'weight' => const Color(0xFFE8F5E9),
   'temperature' => const Color(0xFFFFF3E0),
   'heartRate' => const Color(0xFFFCE4EC),
+  'bloodOxygen' => const Color(0xFFE0F7FA),
   'stool' || 'urine' => const Color(0xFFE1F5FE),
   'pain' => const Color(0xFFFFEBEE),
   'symptom' => const Color(0xFFF3E5F5),
   'instruction' => const Color(0xFFE8F0E7),
   'journey' || 'journeyEntry' => const Color(0xFFE8F0E7),
+  'tumorMarker' => const Color(0xFFE0F2F1),
   _ => const Color(0xFFEFEBE9),
 };
 

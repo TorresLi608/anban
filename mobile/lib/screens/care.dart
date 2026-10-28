@@ -95,6 +95,8 @@ class JourneyList extends StatelessWidget {
                 final category = journey.text('category');
                 final categoryName =
                     journeyCategories[category] ?? '医疗行程';
+                final chemoStage =
+                    category == 'chemo' ? formatChemoStage(latest) : '';
                 final nextDate = DateTime.tryParse(latest.text('next'));
                 final daysLeft = nextDate
                     ?.difference(DateTime(now.year, now.month, now.day))
@@ -202,13 +204,29 @@ class JourneyList extends StatelessWidget {
                             ),
                             const SizedBox(width: 10),
                             Expanded(
-                              child: Text(
-                                categoryName,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: ink,
-                                ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    categoryName,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: ink,
+                                    ),
+                                  ),
+                                  if (chemoStage.isNotEmpty) ...[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      chemoStage,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: pine,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ],
                               ),
                             ),
                             statusWidget,
@@ -345,12 +363,6 @@ class JourneyList extends StatelessWidget {
   }
 }
 
-String displayDate(String value) {
-  final date = DateTime.tryParse(value);
-  if (date == null) return value;
-  return '${dayKey(date)} ${clockText(date)}';
-}
-
 class JourneyDetail extends StatelessWidget {
   final CareStore store;
   final String journeyId;
@@ -392,6 +404,7 @@ class JourneyDetail extends StatelessWidget {
       final daysLeft = nextDate
           ?.difference(DateTime(now.year, now.month, now.day))
           .inDays;
+      final chemoStage = category == 'chemo' ? formatChemoStage(latest) : '';
 
       return Scaffold(
         appBar: AppBar(
@@ -431,6 +444,27 @@ class JourneyDetail extends StatelessWidget {
                           color: ink,
                         ),
                       ),
+                      if (chemoStage.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8F0E7),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            chemoStage,
+                            style: const TextStyle(
+                              fontSize: 11.5,
+                              color: pine,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
                       const Spacer(),
                       if (daysLeft != null)
                         StatusBadge(
@@ -566,6 +600,7 @@ class _TimelineEntryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final photos = photosOf(entry);
+    final chemoStage = formatChemoStage(entry);
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Surface(
@@ -587,15 +622,17 @@ class _TimelineEntryCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    '执行时间：${displayDate(entry.text('last'))}',
-                    style: TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: isLatest ? FontWeight.bold : FontWeight.w600,
-                      color: ink,
+                  Expanded(
+                    child: Text(
+                      '执行时间：${displayDate(entry.text('last'))}',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: isLatest ? FontWeight.bold : FontWeight.w600,
+                        color: ink,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  const Spacer(),
                   if (isLatest)
                     const StatusBadge(
                       label: '最新记录',
@@ -610,6 +647,36 @@ class _TimelineEntryCard extends StatelessWidget {
                     ),
                 ],
               ),
+              if (chemoStage.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8F5E9),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: const Color(0xFFC8E6C9), width: 0.6),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.medication_outlined,
+                        size: 13,
+                        color: Color(0xFF2E7D32),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        chemoStage,
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          color: Color(0xFF2E7D32),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),

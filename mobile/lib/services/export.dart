@@ -18,9 +18,11 @@ Future<Uint8List> medicalPdf(CareData data, {int days = 30}) async {
                   'symptom',
                   'temperature',
                   'heartRate',
+                  'bloodOxygen',
                   'memory',
                   'vital',
                   'dose',
+                  'tumorMarker',
                 ].contains(r.kind) &&
                 !r.at.isBefore(start) &&
                 !r.at.isAfter(now),
@@ -32,9 +34,11 @@ Future<Uint8List> medicalPdf(CareData data, {int days = 30}) async {
     'symptom': '症状',
     'temperature': '体温',
     'heartRate': '心率',
+    'bloodOxygen': '血氧',
     'memory': '随便记一笔',
     'vital': '体征',
     'dose': '服药',
+    'tumorMarker': '肿瘤标志物',
   };
   String detail(CareRecord r) => switch (r.kind) {
     'pain' =>
@@ -43,8 +47,11 @@ Future<Uint8List> medicalPdf(CareData data, {int days = 30}) async {
       '${r.text('name')}（${r.text('severity')}）；${r.text('duration')}；${r.text('impact')}；${r.text('note')}',
     'temperature' => '${r.text('temperature')}℃；${r.text('note')}',
     'heartRate' => '${r.text('heartRate')} 次/分；${r.text('note')}',
+    'bloodOxygen' => '${r.text('bloodOxygen')}%；${r.text('note')}',
     'memory' =>
       '${r.text('title', '随便记一笔')}；${r.text('note')}；附件 ${r.text('filename')}',
+    'tumorMarker' =>
+      '${r.text('hospital', '检验')}；${r.text('summary')}；${r.text('note')}',
     'vital' =>
       '体温 ${r.text('temperature', '—')}℃；体重 ${r.text('weight', '—')}kg；进食 ${r.text('food')}；睡眠 ${r.text('sleep', '—')} 小时；排便 ${r.text('bowel')}；${r.text('note')}',
     _ =>

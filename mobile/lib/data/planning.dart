@@ -4,10 +4,12 @@ const healthKinds = [
   'weight',
   'temperature',
   'heartRate',
+  'bloodOxygen',
   'stool',
   'urine',
   'pain',
   'symptom',
+  'tumorMarker',
   'memory',
 ];
 const journeyCategories = {'picc': 'PICC护理', 'port': '输液港护理', 'chemo': '化疗'};
@@ -244,4 +246,43 @@ List<PlannedReminder> planReminders(
     }
   }
   return result..sort((a, b) => a.at.compareTo(b.at));
+}
+
+/// 格式化行程相关日期时间（YYYY-MM-DD HH:mm）
+String displayDate(String value) {
+  final date = DateTime.tryParse(value);
+  if (date == null) return value;
+  return '${dayKey(date)} ${clockText(date)}';
+}
+
+/// 化疗周期文本格式化（若用户输入纯数字则标准化为“第 X 周期”，否则保留非空文本）
+String formatChemoCycle(String raw) {
+  final text = raw.trim();
+  if (text.isEmpty) return '';
+  if (RegExp(r'^\d+$').hasMatch(text)) {
+    return '第 $text 周期';
+  }
+  return text;
+}
+
+/// 化疗给药次数文本格式化（若用户输入纯数字则标准化为“第 X 次给药”，否则保留非空文本）
+String formatChemoDose(String raw) {
+  final text = raw.trim();
+  if (text.isEmpty) return '';
+  if (RegExp(r'^\d+$').hasMatch(text)) {
+    return '第 $text 次给药';
+  }
+  return text;
+}
+
+/// 获取化疗阶段组合描述（如：第 1 周期 · 第 2 次给药）
+String formatChemoStage(CareRecord record) {
+  final cycle = formatChemoCycle(record.text('cycle'));
+  final dose = formatChemoDose(record.text('doseNumber'));
+  if (cycle.isNotEmpty && dose.isNotEmpty) {
+    return '$cycle · $dose';
+  }
+  if (cycle.isNotEmpty) return cycle;
+  if (dose.isNotEmpty) return dose;
+  return '';
 }

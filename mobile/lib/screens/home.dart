@@ -103,6 +103,15 @@ class HomePage extends StatelessWidget {
                       ),
                       _QuickActionTile(
                         width: itemWidth,
+                        icon: Icons.air,
+                        iconColor: const Color(0xFF00838F),
+                        badgeBg: const Color(0xFFE0F7FA),
+                        title: '测血氧',
+                        subtitle: '血氧饱和度监测',
+                        onTap: () => editRecord(context, store, 'bloodOxygen'),
+                      ),
+                      _QuickActionTile(
+                        width: itemWidth,
                         icon: Icons.water_drop_outlined,
                         iconColor: const Color(0xFF0288D1),
                         badgeBg: const Color(0xFFE1F5FE),

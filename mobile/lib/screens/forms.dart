@@ -8,14 +8,16 @@ import '../data/attachments.dart';
 import '../data/models.dart';
 import '../data/store.dart';
 import '../data/planning.dart';
+import '../data/tumor_marker.dart';
 import '../ui.dart';
 import '../data/medical.dart';
 import 'archive_picker.dart';
+import 'tumor_marker_editor.dart';
 
 class FieldSpec {
   final String key, label;
   final List<String> choices;
-  final String type, initial;
+  final String type, initial, hint;
   final bool required;
   const FieldSpec(
     this.key,
@@ -23,6 +25,7 @@ class FieldSpec {
     this.choices = const [],
     this.type = 'text',
     this.initial = '',
+    this.hint = '',
     this.required = false,
   });
 }
@@ -116,6 +119,16 @@ const specifications = <String, List<FieldSpec>>{
     FieldSpec('heartRate', '心率（次/分）*', type: 'number', required: true),
     FieldSpec('note', '补充说明', type: 'multiline'),
   ],
+  'bloodOxygen': [
+    FieldSpec(
+      'bloodOxygen',
+      '血氧饱和度（%）*',
+      type: 'number',
+      required: true,
+      hint: '如：98',
+    ),
+    FieldSpec('note', '补充说明', type: 'multiline'),
+  ],
   'memory': [
     FieldSpec('title', '标题', initial: '随便记一笔'),
     FieldSpec('note', '想记录的内容', type: 'multiline'),
@@ -139,12 +152,20 @@ const specifications = <String, List<FieldSpec>>{
     ),
     FieldSpec('last', '上次执行时间 *', type: 'datetime', required: true),
     FieldSpec('next', '下次执行时间 *', type: 'datetime', required: true),
+    FieldSpec('cycle', '周期（选填）', hint: '如：1 或 第 1 周期'),
+    FieldSpec('doseNumber', '给药次数（选填）', hint: '如：1 或 第 1 次给药'),
     FieldSpec('note', '补充说明', type: 'multiline'),
   ],
   'journeyEntry': [
     FieldSpec('last', '上次执行时间 *', type: 'datetime', required: true),
     FieldSpec('next', '下次执行时间 *', type: 'datetime', required: true),
+    FieldSpec('cycle', '周期（选填）', hint: '如：1 或 第 1 周期'),
+    FieldSpec('doseNumber', '给药次数（选填）', hint: '如：1 或 第 1 次给药'),
     FieldSpec('note', '补充说明', type: 'multiline'),
+  ],
+  'tumorMarker': [
+    FieldSpec('hospital', '检验机构 / 医院'),
+    FieldSpec('note', '补充说明 / 临床诊断意见', type: 'multiline'),
   ],
 };
 const kindNames = {
@@ -155,6 +176,7 @@ const kindNames = {
   'weight': '体重',
   'temperature': '体温',
   'heartRate': '心率',
+  'bloodOxygen': '血氧',
   'memory': '随便记一笔',
   'stool': '大便',
   'urine': '小便',
@@ -162,6 +184,7 @@ const kindNames = {
   'symptom': '症状',
   'journey': '化疗及维护行程',
   'journeyEntry': '行程记录',
+  'tumorMarker': '肿瘤标志物',
 };
 
 Future<void> editRecord(
@@ -209,18 +232,40 @@ class _RecordFormState extends State<RecordForm> {
   String attachment = '';
   String attachmentName = '';
   String attachmentExtension = '';
+  List<TumorMarkerItem> tumorMarkers = [];
+  bool get isChemoJourney {
+    if (widget.kind == 'journey') {
+      return controllers['category']?.text == 'chemo';
+    }
+    if (widget.kind == 'journeyEntry') {
+      final journeyId = widget.record?.text('journeyId') ??
+          widget.initial['journeyId'] ??
+          '';
+      if (journeyId.isEmpty) return true;
+      final parent = widget.store.data.records
+          .where((r) => r.id == journeyId)
+          .firstOrNull;
+      return parent == null || parent.text('category') == 'chemo';
+    }
+    return false;
+  }
   bool get supportsPhotos => [
     'weight',
+    'bloodOxygen',
     'stool',
     'urine',
     'journey',
     'journeyEntry',
+    'tumorMarker',
   ].contains(widget.kind);
   @override
   void initState() {
     super.initState();
     at = widget.record?.at ?? DateTime.now();
     photos = widget.record == null ? [] : photosOf(widget.record!);
+    if (widget.kind == 'tumorMarker') {
+      tumorMarkers = parseTumorMarkers(widget.record?.text('markers') ?? '');
+    }
     attachment =
         widget.record?.text('attachment') ?? widget.initial['attachment'] ?? '';
     attachmentName =
@@ -261,6 +306,10 @@ class _RecordFormState extends State<RecordForm> {
           ...widget.initial,
           ...controllers.map((k, v) => MapEntry(k, v.text.trim())),
           if (widget.kind == 'pain') 'score': score.round().toString(),
+          if (widget.kind == 'tumorMarker') ...{
+            'markers': encodeTumorMarkers(tumorMarkers),
+            'summary': summarizeTumorMarkers(tumorMarkers),
+          },
           if (supportsPhotos) 'photos': jsonEncode(photos),
           if (widget.kind == 'memory') ...{
             'attachment': attachment,
@@ -548,11 +597,51 @@ class _RecordFormState extends State<RecordForm> {
                         ),
                       const SizedBox(height: 22),
                     ],
-                    for (final spec in specifications[widget.kind]!)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 22),
-                        child: field(spec),
-                      ),
+                    for (final spec in specifications[widget.kind]!) ...[
+                      if ((spec.key == 'cycle' || spec.key == 'doseNumber') &&
+                          !isChemoJourney)
+                        const SizedBox.shrink()
+                      else if (spec.key == 'cycle')
+                        Builder(
+                          builder: (_) {
+                            final doseSpec = specifications[widget.kind]!
+                                .where((s) => s.key == 'doseNumber')
+                                .firstOrNull;
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 22),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(child: field(spec)),
+                                  if (doseSpec != null) ...[
+                                    const SizedBox(width: 14),
+                                    Expanded(child: field(doseSpec)),
+                                  ],
+                                ],
+                              ),
+                            );
+                          },
+                        )
+                      else if (spec.key == 'doseNumber')
+                        const SizedBox.shrink()
+                      else ...[
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 22),
+                          child: field(spec),
+                        ),
+                        if (widget.kind == 'tumorMarker' &&
+                            spec.key == 'hospital')
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 22),
+                            child: TumorMarkersEditor(
+                              items: tumorMarkers,
+                              onChanged: (updated) =>
+                                  setState(() => tumorMarkers = updated),
+                              saving: saving,
+                            ),
+                          ),
+                      ],
+                    ],
                     if (widget.kind == 'memory') ...[
                       const Text('图片或视频（可选）'),
                       const SizedBox(height: 8),
@@ -836,6 +925,7 @@ class _RecordFormState extends State<RecordForm> {
           : TextInputType.text,
       decoration: InputDecoration(
         labelText: spec.label,
+        hintText: spec.hint.isNotEmpty ? spec.hint : null,
         counterText: '',
         suffixIcon:
             spec.type == 'datetime' && !spec.required && c.text.isNotEmpty
@@ -967,6 +1057,60 @@ class _RecordFormState extends State<RecordForm> {
                     setState(() => c.text = (cur + 1).toString());
                   },
           ),
+        ],
+      );
+    } else if (spec.key == 'bloodOxygen') {
+      final presets = ['99', '98', '97', '96', '95', '93'];
+      final curVal = double.tryParse(c.text);
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              for (final p in presets)
+                ActionChip(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  label: Text('$p%', style: const TextStyle(fontSize: 11)),
+                  onPressed: saving ? null : () => setState(() => c.text = p),
+                ),
+              ActionChip(
+                visualDensity: VisualDensity.compact,
+                avatar: const Icon(Icons.remove, size: 14),
+                label: const Text('1%', style: TextStyle(fontSize: 11)),
+                onPressed: saving
+                    ? null
+                    : () {
+                        final cur = int.tryParse(c.text) ?? 98;
+                        setState(() => c.text = (cur - 1).clamp(50, 100).toString());
+                      },
+              ),
+              ActionChip(
+                visualDensity: VisualDensity.compact,
+                avatar: const Icon(Icons.add, size: 14),
+                label: const Text('1%', style: TextStyle(fontSize: 11)),
+                onPressed: saving
+                    ? null
+                    : () {
+                        final cur = int.tryParse(c.text) ?? 98;
+                        setState(() => c.text = (cur + 1).clamp(50, 100).toString());
+                      },
+              ),
+            ],
+          ),
+          if (curVal != null && curVal < 95)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Note(
+                curVal <= 93
+                    ? '血氧较低（≤93%），如伴有胸闷、气促、呼吸困难，请立即联系医护或就医！'
+                    : '血氧偏低（<95%），建议安静休息后复测；若持续偏低请联系医护。',
+                urgent: curVal <= 93,
+              ),
+            ),
         ],
       );
     } else if (spec.key == 'weight') {

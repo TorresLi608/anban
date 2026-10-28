@@ -11,6 +11,7 @@ const recordKinds = [
   'weight',
   'temperature',
   'heartRate',
+  'bloodOxygen',
   'stool',
   'urine',
   'journey',
@@ -29,6 +30,7 @@ const recordKinds = [
   'folder',
   'visit',
   'instruction',
+  'tumorMarker',
 ];
 const symptomNames = [
   '黄疸',
@@ -168,6 +170,12 @@ class CareRecord {
         throw const FormatException('请填写有效心率（20–250 次/分）');
       }
     }
+    if (kind == 'bloodOxygen') {
+      final oxygen = double.tryParse(text('bloodOxygen'));
+      if (oxygen == null || !oxygen.isFinite || oxygen < 50 || oxygen > 100) {
+        throw const FormatException('请填写有效血氧饱和度（50–100%）');
+      }
+    }
     if (['stool', 'urine'].contains(kind) &&
         selectedValues(text('status')).isEmpty) {
       throw const FormatException('排便情况为必填项');
@@ -228,6 +236,21 @@ class CareRecord {
             text('doseKey').isEmpty ||
             text('name').isEmpty)) {
       throw const FormatException('服药记录缺少药物信息');
+    }
+    if (kind == 'tumorMarker') {
+      final markersJson = text('markers');
+      final photos = photosOf(this);
+      if (markersJson.isEmpty && photos.isEmpty) {
+        throw const FormatException('请填写至少一项肿瘤标志物数值或上传化验单图片');
+      }
+      if (markersJson.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(markersJson);
+          if (decoded is! List) throw const FormatException();
+        } catch (_) {
+          throw const FormatException('肿瘤标志物数据格式无效');
+        }
+      }
     }
   }
 }
