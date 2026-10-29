@@ -120,6 +120,10 @@ class _RecordsPageState extends State<RecordsPage> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
+                    if (latest != null && items.length > 1 && kind != 'memory') ...[
+                      const SizedBox(height: 3),
+                      _buildOverviewDiffHint(latest, items[1]),
+                    ],
                   ],
                 ),
               ),
@@ -159,7 +163,9 @@ class _RecordsPageState extends State<RecordsPage> {
           Section(
             '指标走势分析',
             child: Surface(
-              child: TumorMarkerChart(records: items),
+              child: RepaintBoundary(
+                child: TumorMarkerChart(records: items),
+              ),
             ),
           ),
           const SizedBox(height: 14),
@@ -206,6 +212,7 @@ class _RecordsPageState extends State<RecordsPage> {
                   separatorBuilder: (_, _) => const SizedBox(height: 10),
                   itemBuilder: (context, index) {
                     final r = items[index];
+                    final prev = index + 1 < items.length ? items[index + 1] : null;
                     final photos = photosOf(r);
                     final hasAttachment = r.text('attachment').isNotEmpty;
 
@@ -271,6 +278,11 @@ class _RecordsPageState extends State<RecordsPage> {
                                       ),
                                     ],
                                   ),
+                                  // 除随便记一笔外的各项常规指标历史对比
+                                  if (r.kind != 'memory' && r.kind != 'tumorMarker') ...[
+                                    const SizedBox(height: 6),
+                                    _buildRecordDiffBadge(r, prev),
+                                  ],
                                   if (r.kind == 'tumorMarker') ...[
                                     if (r.text('hospital').isNotEmpty) ...[
                                       const SizedBox(height: 4),
@@ -298,6 +310,15 @@ class _RecordsPageState extends State<RecordsPage> {
                                         final markers = parseTumorMarkers(
                                           r.text('markers'),
                                         );
+                                        final prevMarkers = prev != null
+                                            ? parseTumorMarkers(prev.text('markers'))
+                                            : null;
+                                        final comparison = compareTumorMarkers(
+                                          markers,
+                                          prevMarkers,
+                                          currentAt: r.at,
+                                          previousAt: prev?.at,
+                                        );
                                         final highItems = markers
                                             .where((m) => m.status == 'high')
                                             .toList();
@@ -314,6 +335,15 @@ class _RecordsPageState extends State<RecordsPage> {
                                           crossAxisAlignment:
                                               CrossAxisAlignment.start,
                                           children: [
+                                            const SizedBox(height: 6),
+                                            // 较前次检测的宏观对比横幅
+                                            _buildTumorComparisonBanner(comparison),
+
+                                            // 关键变动项目高亮标签（偏高上升或恢复正常）
+                                            if (comparison.keyChanges.isNotEmpty) ...[
+                                              const SizedBox(height: 6),
+                                              _buildTumorKeyChanges(comparison.keyChanges),
+                                            ],
                                             if (highItems.isNotEmpty ||
                                                 lowItems.isNotEmpty) ...[
                                               const SizedBox(height: 6),
@@ -322,65 +352,14 @@ class _RecordsPageState extends State<RecordsPage> {
                                                 runSpacing: 4,
                                                 children: [
                                                   for (final m in highItems)
-                                                    Container(
-                                                      padding:
-                                                          const EdgeInsets.symmetric(
-                                                            horizontal: 7,
-                                                            vertical: 2,
-                                                          ),
-                                                      decoration: BoxDecoration(
-                                                        color: const Color(
-                                                          0xFFFFEBEE,
-                                                        ),
-                                                        borderRadius:
-                                                            BorderRadius.circular(
-                                                              5,
-                                                            ),
-                                                        border: Border.all(
-                                                          color: const Color(
-                                                            0xFFFFCDD2,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                      child: Text(
-                                                        '${m.abbr} ${m.value} ${m.unit} ↑',
-                                                        style: const TextStyle(
-                                                          fontSize: 11,
-                                                          fontWeight:
-                                                              FontWeight.bold,
-                                                          color: Color(
-                                                            0xFFC62828,
-                                                          ),
-                                                        ),
-                                                      ),
+                                                    _buildStatusChip(
+                                                      '${m.abbr} ${m.value} ${m.unit} ↑',
+                                                      isHigh: true,
                                                     ),
                                                   for (final m in lowItems)
-                                                    Container(
-                                                      padding:
-                                                          const EdgeInsets.symmetric(
-                                                            horizontal: 7,
-                                                            vertical: 2,
-                                                          ),
-                                                      decoration: BoxDecoration(
-                                                        color: const Color(
-                                                          0xFFFFF3E0,
-                                                        ),
-                                                        borderRadius:
-                                                            BorderRadius.circular(
-                                                              5,
-                                                            ),
-                                                      ),
-                                                      child: Text(
-                                                        '${m.abbr} ${m.value} ${m.unit} ↓',
-                                                        style: const TextStyle(
-                                                          fontSize: 11,
-                                                          fontWeight:
-                                                              FontWeight.bold,
-                                                          color: Color(
-                                                            0xFFEF6C00,
-                                                          ),
-                                                        ),
-                                                      ),
+                                                    _buildStatusChip(
+                                                      '${m.abbr} ${m.value} ${m.unit} ↓',
+                                                      isLow: true,
                                                     ),
                                                 ],
                                               ),
@@ -440,7 +419,7 @@ class _RecordsPageState extends State<RecordsPage> {
                                               ),
                                               if (isExpanded) ...[
                                                 const SizedBox(height: 8),
-                                                _buildTumorDetailTable(markers),
+                                                _buildTumorDetailTable(comparison),
                                               ],
                                             ],
                                           ],
@@ -663,7 +642,315 @@ class _RecordsPageState extends State<RecordsPage> {
     _ => '${r.text('name')} · ${r.text('severity')}',
   };
 
-  Widget _buildTumorDetailTable(List<TumorMarkerItem> markers) {
+  Widget _buildStatusChip(String label, {bool isHigh = false, bool isLow = false}) {
+    final bg = isHigh
+        ? const Color(0xFFFFEBEE)
+        : isLow
+        ? const Color(0xFFFFF3E0)
+        : const Color(0xFFE8F5E9);
+    final border = isHigh
+        ? const Color(0xFFFFCDD2)
+        : isLow
+        ? const Color(0xFFFFE0B2)
+        : const Color(0xFFC8E6C9);
+    final text = isHigh
+        ? const Color(0xFFC62828)
+        : isLow
+        ? const Color(0xFFEF6C00)
+        : const Color(0xFF2E7D32);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(5),
+        border: Border.all(color: border),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          color: text,
+        ),
+      ),
+    );
+  }
+
+  /// 顶部分类概况横幅中的最新历史变动提示
+  Widget _buildOverviewDiffHint(CareRecord latest, CareRecord prev) {
+    if (kind == 'tumorMarker') {
+      final curMarkers = parseTumorMarkers(latest.text('markers'));
+      final prevMarkers = parseTumorMarkers(prev.text('markers'));
+      final comp = compareTumorMarkers(
+        curMarkers,
+        prevMarkers,
+        currentAt: latest.at,
+        previousAt: prev.at,
+      );
+      return Text(
+        '较前次(${prev.at.month}/${prev.at.day}): ${comp.summary}',
+        style: const TextStyle(
+          fontSize: 11,
+          color: Color(0xFF00796B),
+          fontWeight: FontWeight.w600,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      );
+    }
+
+    final diff = _computeRecordDiff(latest, prev);
+    if (diff == null || diff.trend == 'baseline') {
+      return const SizedBox.shrink();
+    }
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(diff.icon, size: 12, color: diff.textColor),
+        const SizedBox(width: 3),
+        Text(
+          '较前次: ${diff.label}',
+          style: TextStyle(
+            fontSize: 11,
+            color: diff.textColor,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 渲染肿瘤标志物检验与前次的宏观对比条
+  Widget _buildTumorComparisonBanner(TumorMarkersComparison comparison) {
+    if (!comparison.hasPrevious) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF1F5F1),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.flag_outlined, size: 13, color: muted),
+            SizedBox(width: 4),
+            Text(
+              '首笔基线检测 · 建立对照基准',
+              style: TextStyle(fontSize: 11, color: muted),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final prevDateStr = comparison.previousAt != null
+        ? '${comparison.previousAt!.month}/${comparison.previousAt!.day}'
+        : '';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7FAF7),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE2EBE2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.compare_arrows_rounded, size: 14, color: Color(0xFF00796B)),
+              const SizedBox(width: 4),
+              Text(
+                '较前次复查 ($prevDateStr):',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: ink,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                comparison.summary,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Color(0xFF00796B),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              if (comparison.upCount > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFEBEE),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: const Color(0xFFFFCDD2)),
+                  ),
+                  child: Text(
+                    '↑ ${comparison.upCount} 项上升',
+                    style: const TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFFC62828),
+                    ),
+                  ),
+                ),
+              if (comparison.downCount > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8F5E9),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: const Color(0xFFC8E6C9)),
+                  ),
+                  child: Text(
+                    '↓ ${comparison.downCount} 项好转',
+                    style: const TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF2E7D32),
+                    ),
+                  ),
+                ),
+              if (comparison.flatCount > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF5F5F5),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: const Color(0xFFE0E0E0)),
+                  ),
+                  child: Text(
+                    '— ${comparison.flatCount} 项持平',
+                    style: const TextStyle(
+                      fontSize: 10.5,
+                      color: muted,
+                    ),
+                  ),
+                ),
+              if (comparison.newlyHighCount > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD32F2F),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    '⚠️ 新增偏高 ${comparison.newlyHighCount}项',
+                    style: const TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              if (comparison.returnedNormalCount > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2E7D32),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    '🎉 恢复正常 ${comparison.returnedNormalCount}项',
+                    style: const TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 渲染肿瘤标志物关键变动指标的直观标签
+  Widget _buildTumorKeyChanges(List<TumorMarkerDiff> keyChanges) {
+    return Wrap(
+      spacing: 6,
+      runSpacing: 4,
+      children: [
+        for (final change in keyChanges)
+          Builder(
+            builder: (_) {
+              final isUp = change.trend == 'up';
+              final isHigh = change.isHigh;
+              final isReturned = change.isReturnedNormal;
+              final bg = isReturned
+                  ? const Color(0xFFE8F5E9)
+                  : isHigh
+                  ? const Color(0xFFFFEBEE)
+                  : isUp
+                  ? const Color(0xFFFFF3E0)
+                  : const Color(0xFFE8F5E9);
+              final border = isReturned
+                  ? const Color(0xFFC8E6C9)
+                  : isHigh
+                  ? const Color(0xFFFFCDD2)
+                  : isUp
+                  ? const Color(0xFFFFE0B2)
+                  : const Color(0xFFC8E6C9);
+              final text = isReturned
+                  ? const Color(0xFF2E7D32)
+                  : isHigh
+                  ? const Color(0xFFC62828)
+                  : isUp
+                  ? const Color(0xFFE65100)
+                  : const Color(0xFF2E7D32);
+
+              final prevValStr = change.prevVal != null
+                  ? (change.prevVal!.truncateToDouble() == change.prevVal
+                      ? change.prevVal!.toInt().toString()
+                      : change.prevVal!.toStringAsFixed(1))
+                  : '未测';
+              final curValStr = change.currentVal != null
+                  ? (change.currentVal!.truncateToDouble() == change.currentVal
+                      ? change.currentVal!.toInt().toString()
+                      : change.currentVal!.toStringAsFixed(1))
+                  : '—';
+
+              String statusSuffix = '';
+              if (isReturned) {
+                statusSuffix = ' 恢复正常';
+              } else if (change.isNewlyHigh) {
+                statusSuffix = ' 新增偏高';
+              }
+
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: bg,
+                  borderRadius: BorderRadius.circular(5),
+                  border: Border.all(color: border),
+                ),
+                child: Text(
+                  '${change.current.abbr} $prevValStr→$curValStr (${change.formattedDiff})$statusSuffix',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: text,
+                  ),
+                ),
+              );
+            },
+          ),
+      ],
+    );
+  }
+
+  /// 展开的12项检验单明细表格（含较前次涨跌列）
+  Widget _buildTumorDetailTable(TumorMarkersComparison comparison) {
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFFF9FBFA),
@@ -681,9 +968,20 @@ class _RecordsPageState extends State<RecordsPage> {
             child: const Row(
               children: [
                 Expanded(
-                  flex: 4,
+                  flex: 3,
                   child: Text(
-                    '项目',
+                    '项目 & 参考',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: ink,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    '本次测值',
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.bold,
@@ -694,18 +992,7 @@ class _RecordsPageState extends State<RecordsPage> {
                 Expanded(
                   flex: 3,
                   child: Text(
-                    '测定值',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: ink,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  flex: 3,
-                  child: Text(
-                    '参考区间',
+                    '较前次涨跌',
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.bold,
@@ -728,14 +1015,26 @@ class _RecordsPageState extends State<RecordsPage> {
               ],
             ),
           ),
-          for (var i = 0; i < markers.length; i++) ...[
+          for (var i = 0; i < comparison.diffs.length; i++) ...[
             Builder(
               builder: (_) {
-                final m = markers[i];
+                final diff = comparison.diffs[i];
+                final m = diff.current;
                 final isHigh = m.status == 'high';
                 final isLow = m.status == 'low';
                 final isNormal = m.status == 'normal';
                 final isFilled = m.value.isNotEmpty;
+                final isUp = diff.trend == 'up';
+                final isDown = diff.trend == 'down';
+
+                // 背景色高亮：偏高上升醒目淡红，偏高回落或恢复正常淡绿，其余斑马纹
+                final rowBg = (isHigh && isUp)
+                    ? const Color(0xFFFFF0F0)
+                    : diff.isReturnedNormal
+                    ? const Color(0xFFF1F8F1)
+                    : isHigh
+                    ? const Color(0xFFFFF8F8)
+                    : (i.isEven ? Colors.white : const Color(0xFFF9FBFA));
 
                 return Container(
                   padding: const EdgeInsets.symmetric(
@@ -743,44 +1042,55 @@ class _RecordsPageState extends State<RecordsPage> {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: isHigh
-                        ? const Color(0xFFFFF5F5)
-                        : (i.isEven ? Colors.white : const Color(0xFFF9FBFA)),
+                    color: rowBg,
                     border: const Border(
                       top: BorderSide(color: Color(0xFFEAEFEA), width: 0.8),
                     ),
                   ),
                   child: Row(
                     children: [
+                      // 1. 项目名称、缩写与参考区间
                       Expanded(
-                        flex: 4,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
+                        flex: 3,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              m.abbr,
-                              style: TextStyle(
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.bold,
-                                color: isHigh ? const Color(0xFFC62828) : ink,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                m.name,
-                                style: const TextStyle(
-                                  fontSize: 10.5,
-                                  color: muted,
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  m.abbr,
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.bold,
+                                    color: isHigh ? const Color(0xFFC62828) : ink,
+                                  ),
                                 ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(
+                                    m.name,
+                                    style: const TextStyle(
+                                      fontSize: 10.5,
+                                      color: muted,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Text(
+                              '参考: ${m.ref} ${m.unit}',
+                              style: const TextStyle(fontSize: 9.5, color: muted),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),
                       ),
+
+                      // 2. 本次测定值
                       Expanded(
-                        flex: 3,
+                        flex: 2,
                         child: Text(
                           isFilled ? '${m.value} ${m.unit}' : '—',
                           style: TextStyle(
@@ -795,14 +1105,28 @@ class _RecordsPageState extends State<RecordsPage> {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
+
+                      // 3. 较前次涨跌幅对比（绝对差值 + 百分比 + 箭头）
                       Expanded(
                         flex: 3,
                         child: Text(
-                          '${m.ref} ${m.unit}',
-                          style: const TextStyle(fontSize: 10, color: muted),
+                          diff.formattedDiff,
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: isUp || isDown
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                            color: isUp
+                                ? const Color(0xFFC62828)
+                                : isDown
+                                ? const Color(0xFF2E7D32)
+                                : muted,
+                          ),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
+
+                      // 4. 状态标签
                       SizedBox(
                         width: 44,
                         child: Center(
@@ -848,6 +1172,353 @@ class _RecordsPageState extends State<RecordsPage> {
       ),
     );
   }
+
+  /// 渲染常规体征指标的历史对比胶囊
+  Widget _buildRecordDiffBadge(CareRecord current, CareRecord? prev) {
+    final diff = _computeRecordDiff(current, prev);
+    if (diff == null) return const SizedBox.shrink();
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+          decoration: BoxDecoration(
+            color: diff.bgColor,
+            borderRadius: BorderRadius.circular(5),
+            border: Border.all(color: diff.borderColor, width: 0.8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (diff.icon != null) ...[
+                Icon(diff.icon, size: 12, color: diff.textColor),
+                const SizedBox(width: 3),
+              ],
+              Text(
+                diff.label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: diff.textColor,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (diff.subLabel != null && diff.subLabel!.isNotEmpty) ...[
+          const SizedBox(width: 6),
+          Text(
+            diff.subLabel!,
+            style: const TextStyle(fontSize: 11, color: muted),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// 计算各项常规记录与上一条的对比结果
+  _RecordDiffInfo? _computeRecordDiff(CareRecord current, CareRecord? prev) {
+    if (current.kind == 'memory') return null;
+
+    if (prev == null) {
+      return const _RecordDiffInfo(
+        label: '首笔基线',
+        trend: 'baseline',
+        textColor: muted,
+        bgColor: Color(0xFFF1F5F1),
+        borderColor: Color(0xFFE2EBE2),
+        icon: Icons.flag_outlined,
+      );
+    }
+
+    final prevTimeStr = '${prev.at.month}/${prev.at.day}';
+
+    switch (current.kind) {
+      case 'weight':
+        final c = double.tryParse(current.text('weight'));
+        final p = double.tryParse(prev.text('weight'));
+        if (c == null || p == null) return null;
+        final dv = c - p;
+        final dp = p > 0 ? (dv / p * 100) : null;
+        if (dv.abs() < 0.05) {
+          return _RecordDiffInfo(
+            label: '较上次持平 (±0 kg)',
+            subLabel: '前次 $p kg',
+            trend: 'flat',
+            textColor: muted,
+            bgColor: const Color(0xFFF5F5F5),
+            borderColor: const Color(0xFFE0E0E0),
+            icon: Icons.trending_flat,
+          );
+        }
+        final isUp = dv > 0;
+        final sign = isUp ? '+' : '';
+        final pctStr = dp != null ? ' ($sign${dp.toStringAsFixed(1)}%)' : '';
+        final isWorsenedWeightLoss = !isUp && dp != null && dp <= -5.0;
+
+        return _RecordDiffInfo(
+          label: '较上次 $sign${dv.toStringAsFixed(1)} kg$pctStr ${isUp ? '↑' : '↓'}',
+          subLabel: '前次($prevTimeStr) $p kg',
+          trend: isUp ? 'up' : 'down',
+          textColor: isWorsenedWeightLoss
+              ? const Color(0xFFE65100)
+              : isUp
+              ? const Color(0xFF2E7D32)
+              : const Color(0xFF0288D1),
+          bgColor: isWorsenedWeightLoss
+              ? const Color(0xFFFFF3E0)
+              : isUp
+              ? const Color(0xFFE8F5E9)
+              : const Color(0xFFE1F5FE),
+          borderColor: isWorsenedWeightLoss
+              ? const Color(0xFFFFE0B2)
+              : isUp
+              ? const Color(0xFFC8E6C9)
+              : const Color(0xFFB3E5FC),
+          icon: isUp ? Icons.trending_up : Icons.trending_down,
+        );
+
+      case 'temperature':
+        final c = double.tryParse(current.text('temperature'));
+        final p = double.tryParse(prev.text('temperature'));
+        if (c == null || p == null) return null;
+        final dv = c - p;
+        if (dv.abs() < 0.05) {
+          return _RecordDiffInfo(
+            label: '较上次持平',
+            subLabel: '前次 $p ℃',
+            trend: 'flat',
+            textColor: muted,
+            bgColor: const Color(0xFFF5F5F5),
+            borderColor: const Color(0xFFE0E0E0),
+            icon: Icons.trending_flat,
+          );
+        }
+        // 退热正常
+        if (p >= 37.3 && c < 37.3) {
+          return _RecordDiffInfo(
+            label: '较上次 ${dv.toStringAsFixed(1)} ℃ ↓ (退热正常)',
+            subLabel: '前次 $p ℃',
+            trend: 'down',
+            textColor: const Color(0xFF2E7D32),
+            bgColor: const Color(0xFFE8F5E9),
+            borderColor: const Color(0xFFC8E6C9),
+            icon: Icons.trending_down,
+          );
+        }
+        // 体温升高
+        final isUp = dv > 0;
+        final sign = isUp ? '+' : '';
+        final isFever = c >= 37.3;
+        return _RecordDiffInfo(
+          label: '较上次 $sign${dv.toStringAsFixed(1)} ℃ ${isUp ? '↑' : '↓'}',
+          subLabel: '前次 $p ℃',
+          trend: isUp ? 'up' : 'down',
+          textColor: isFever ? const Color(0xFFC62828) : (isUp ? const Color(0xFFE65100) : const Color(0xFF0288D1)),
+          bgColor: isFever ? const Color(0xFFFFEBEE) : (isUp ? const Color(0xFFFFF3E0) : const Color(0xFFE1F5FE)),
+          borderColor: isFever ? const Color(0xFFFFCDD2) : (isUp ? const Color(0xFFFFE0B2) : const Color(0xFFB3E5FC)),
+          icon: isUp ? Icons.trending_up : Icons.trending_down,
+        );
+
+      case 'heartRate':
+        final c = int.tryParse(current.text('heartRate'));
+        final p = int.tryParse(prev.text('heartRate'));
+        if (c == null || p == null) return null;
+        final dv = c - p;
+        if (dv == 0) {
+          return _RecordDiffInfo(
+            label: '较上次持平',
+            subLabel: '前次 $p 次/分',
+            trend: 'flat',
+            textColor: muted,
+            bgColor: const Color(0xFFF5F5F5),
+            borderColor: const Color(0xFFE0E0E0),
+            icon: Icons.trending_flat,
+          );
+        }
+        final isUp = dv > 0;
+        final sign = isUp ? '+' : '';
+        return _RecordDiffInfo(
+          label: '较上次 $sign$dv 次/分 ${isUp ? '↑' : '↓'}',
+          subLabel: '前次 $p 次/分',
+          trend: isUp ? 'up' : 'down',
+          textColor: isUp ? const Color(0xFFC2185B) : const Color(0xFF0288D1),
+          bgColor: isUp ? const Color(0xFFFCE4EC) : const Color(0xFFE1F5FE),
+          borderColor: isUp ? const Color(0xFFF8BBD0) : const Color(0xFFB3E5FC),
+          icon: isUp ? Icons.trending_up : Icons.trending_down,
+        );
+
+      case 'bloodOxygen':
+        final c = double.tryParse(current.text('bloodOxygen'));
+        final p = double.tryParse(prev.text('bloodOxygen'));
+        if (c == null || p == null) return null;
+        final dv = c - p;
+        if (dv.abs() < 0.1) {
+          return _RecordDiffInfo(
+            label: '较上次持平',
+            subLabel: '前次 ${p.toInt()}%',
+            trend: 'flat',
+            textColor: muted,
+            bgColor: const Color(0xFFF5F5F5),
+            borderColor: const Color(0xFFE0E0E0),
+            icon: Icons.trending_flat,
+          );
+        }
+        final isUp = dv > 0;
+        final sign = isUp ? '+' : '';
+        final isHypoxia = c < 95;
+        return _RecordDiffInfo(
+          label: '较上次 $sign${dv.toStringAsFixed(dv.truncateToDouble() == dv ? 0 : 1)}% ${isUp ? '↑' : '↓'}',
+          subLabel: '前次 ${p.toInt()}%',
+          trend: isUp ? 'up' : 'down',
+          textColor: isHypoxia
+              ? const Color(0xFFC62828)
+              : isUp
+              ? const Color(0xFF00838F)
+              : const Color(0xFFE65100),
+          bgColor: isHypoxia
+              ? const Color(0xFFFFEBEE)
+              : isUp
+              ? const Color(0xFFE0F7FA)
+              : const Color(0xFFFFF3E0),
+          borderColor: isHypoxia
+              ? const Color(0xFFFFCDD2)
+              : isUp
+              ? const Color(0xFFB2EBF2)
+              : const Color(0xFFFFE0B2),
+          icon: isUp ? Icons.trending_up : Icons.trending_down,
+        );
+
+      case 'pain':
+        final c = int.tryParse(current.text('score'));
+        final p = int.tryParse(prev.text('score'));
+        if (c == null || p == null) return null;
+        final dv = c - p;
+        if (dv == 0) {
+          return _RecordDiffInfo(
+            label: '较上次持平 ($c 分)',
+            subLabel: '前次 $p 分',
+            trend: 'flat',
+            textColor: muted,
+            bgColor: const Color(0xFFF5F5F5),
+            borderColor: const Color(0xFFE0E0E0),
+            icon: Icons.trending_flat,
+          );
+        }
+        if (dv < 0) {
+          return _RecordDiffInfo(
+            label: '较上次 $dv 分 ↓ (疼痛缓解)',
+            subLabel: '前次 $p 分',
+            trend: 'down',
+            textColor: const Color(0xFF2E7D32),
+            bgColor: const Color(0xFFE8F5E9),
+            borderColor: const Color(0xFFC8E6C9),
+            icon: Icons.trending_down,
+          );
+        }
+        return _RecordDiffInfo(
+          label: '较上次 +$dv 分 ↑ (疼痛加剧)',
+          subLabel: '前次 $p 分',
+          trend: 'up',
+          textColor: const Color(0xFFD32F2F),
+          bgColor: const Color(0xFFFFEBEE),
+          borderColor: const Color(0xFFFFCDD2),
+          icon: Icons.trending_up,
+        );
+
+      case 'symptom':
+        final cSev = current.text('severity');
+        final pSev = prev.text('severity');
+        final levelMap = {'轻': 1, '中': 2, '重': 3};
+        final cLevel = levelMap[cSev] ?? 1;
+        final pLevel = levelMap[pSev] ?? 1;
+        if (cLevel < pLevel) {
+          return _RecordDiffInfo(
+            label: '程度减轻 ($pSev度 → $cSev度 ↓)',
+            trend: 'down',
+            textColor: const Color(0xFF2E7D32),
+            bgColor: const Color(0xFFE8F5E9),
+            borderColor: const Color(0xFFC8E6C9),
+            icon: Icons.trending_down,
+          );
+        } else if (cLevel > pLevel) {
+          return _RecordDiffInfo(
+            label: '程度加重 ($pSev度 → $cSev度 ↑)',
+            trend: 'up',
+            textColor: const Color(0xFFD32F2F),
+            bgColor: const Color(0xFFFFEBEE),
+            borderColor: const Color(0xFFFFCDD2),
+            icon: Icons.trending_up,
+          );
+        }
+        return _RecordDiffInfo(
+          label: '持续$cSev度',
+          trend: 'flat',
+          textColor: muted,
+          bgColor: const Color(0xFFF5F5F5),
+          borderColor: const Color(0xFFE0E0E0),
+          icon: Icons.trending_flat,
+        );
+
+      case 'stool':
+      case 'urine':
+        final cStatus = selectedValues(current.text('status')).join('、');
+        final pStatus = selectedValues(prev.text('status')).join('、');
+        final isNormal = cStatus.isEmpty || cStatus == '正常';
+        final wasNormal = pStatus.isEmpty || pStatus == '正常';
+        if (isNormal && !wasNormal) {
+          return const _RecordDiffInfo(
+            label: '较前次好转 (恢复正常)',
+            trend: 'down',
+            textColor: Color(0xFF2E7D32),
+            bgColor: Color(0xFFE8F5E9),
+            borderColor: Color(0xFFC8E6C9),
+            icon: Icons.check_circle_outline,
+          );
+        } else if (!isNormal && wasNormal) {
+          return const _RecordDiffInfo(
+            label: '较前次出现异常',
+            trend: 'up',
+            textColor: Color(0xFFE65100),
+            bgColor: Color(0xFFFFF3E0),
+            borderColor: Color(0xFFFFE0B2),
+            icon: Icons.warning_amber_rounded,
+          );
+        }
+        return _RecordDiffInfo(
+          label: isNormal ? '排泄持续正常' : '持续异常',
+          trend: 'flat',
+          textColor: isNormal ? const Color(0xFF2E7D32) : muted,
+          bgColor: isNormal ? const Color(0xFFE8F5E9) : const Color(0xFFF5F5F5),
+          borderColor: isNormal ? const Color(0xFFC8E6C9) : const Color(0xFFE0E0E0),
+          icon: isNormal ? Icons.check_circle_outline : Icons.trending_flat,
+        );
+
+      default:
+        return null;
+    }
+  }
+}
+
+class _RecordDiffInfo {
+  final String label;
+  final String? subLabel;
+  final String trend; // 'up' | 'down' | 'flat' | 'baseline'
+  final Color textColor;
+  final Color bgColor;
+  final Color borderColor;
+  final IconData? icon;
+
+  const _RecordDiffInfo({
+    required this.label,
+    this.subLabel,
+    required this.trend,
+    required this.textColor,
+    required this.bgColor,
+    required this.borderColor,
+    this.icon,
+  });
 }
 
 class PainChart extends StatelessWidget {

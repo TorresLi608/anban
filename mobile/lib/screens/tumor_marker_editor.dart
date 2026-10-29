@@ -21,22 +21,27 @@ class TumorMarkersEditor extends StatefulWidget {
 
 class _TumorMarkersEditorState extends State<TumorMarkersEditor> {
   bool onlyFilledOrAbnormal = false;
+  late List<TumorMarkerItem> _localItems;
   final Map<String, TextEditingController> _controllers = {};
 
   @override
   void initState() {
     super.initState();
+    _localItems = List.from(widget.items);
     _syncControllers();
   }
 
   @override
   void didUpdateWidget(covariant TumorMarkersEditor oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _syncControllers();
+    if (widget.items != oldWidget.items) {
+      _localItems = List.from(widget.items);
+      _syncControllers();
+    }
   }
 
   void _syncControllers() {
-    for (final item in widget.items) {
+    for (final item in _localItems) {
       if (!_controllers.containsKey(item.key)) {
         _controllers[item.key] = TextEditingController(text: item.value);
       } else if (_controllers[item.key]!.text != item.value) {
@@ -54,21 +59,37 @@ class _TumorMarkersEditorState extends State<TumorMarkersEditor> {
   }
 
   void _updateItem(TumorMarkerItem updated) {
-    final list = widget.items.map((e) => e.key == updated.key ? updated : e).toList();
-    widget.onChanged(list);
+    final idx = _localItems.indexWhere((e) => e.key == updated.key);
+    if (idx != -1) {
+      setState(() {
+        _localItems[idx] = updated;
+      });
+      // 仅向外部回调新数据，无需触发外层整表全量重绘
+      widget.onChanged(_localItems);
+    }
   }
 
   void _markAllFilledNormal() {
-    final list = widget.items.map((e) {
-      if (e.value.trim().isNotEmpty) {
-        return e.copyWith(status: 'normal');
-      }
-      return e;
-    }).toList();
-    widget.onChanged(list);
+    setState(() {
+      _localItems = _localItems.map((e) {
+        if (e.value.trim().isNotEmpty) {
+          return e.copyWith(status: 'normal');
+        }
+        return e;
+      }).toList();
+    });
+    widget.onChanged(_localItems);
   }
 
   Future<void> _editRefAndUnit(TumorMarkerItem item) async {
+    // 弹窗前先收回输入法软键盘，防止键盘收起与弹窗展开双动画叠加掉帧
+    final currentFocus = FocusScope.of(context);
+    if (currentFocus.hasFocus) {
+      currentFocus.unfocus();
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    if (!mounted) return;
+
     final refController = TextEditingController(text: item.ref);
     final unitController = TextEditingController(text: item.unit);
     final confirmed = await showDialog<bool>(
@@ -128,62 +149,63 @@ class _TumorMarkersEditorState extends State<TumorMarkersEditor> {
 
   @override
   Widget build(BuildContext context) {
-    final filledCount = widget.items.where((e) => e.value.trim().isNotEmpty).length;
-    final highCount = widget.items.where((e) => e.status == 'high').length;
-    final lowCount = widget.items.where((e) => e.status == 'low').length;
+    final filledCount = _localItems.where((e) => e.value.trim().isNotEmpty).length;
+    final highCount = _localItems.where((e) => e.status == 'high').length;
+    final lowCount = _localItems.where((e) => e.status == 'low').length;
 
     final displayedItems = onlyFilledOrAbnormal
-        ? widget.items
+        ? _localItems
             .where((e) => e.value.trim().isNotEmpty || e.status.isNotEmpty)
             .toList()
-        : widget.items;
+        : _localItems;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // 1. 顶部指示与操作工具栏
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF0F7F5),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFB2DFDB), width: 1),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.biotech, color: Color(0xFF00796B), size: 20),
-                  const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text(
-                      '肿瘤标志物12项检验数据',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: ink,
+    return RepaintBoundary(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 1. 顶部指示与操作工具栏
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF0F7F5),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFB2DFDB), width: 1),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.biotech, color: Color(0xFF00796B), size: 20),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        '肿瘤标志物12项检验数据',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: ink,
+                        ),
                       ),
                     ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFFB2DFDB)),
-                    ),
-                    child: Text(
-                      '已填 $filledCount / ${widget.items.length}',
-                      style: const TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF00796B),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFFB2DFDB)),
+                      ),
+                      child: Text(
+                        '已填 $filledCount / ${_localItems.length}',
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF00796B),
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
@@ -287,206 +309,12 @@ class _TumorMarkersEditorState extends State<TumorMarkersEditor> {
             ),
           )
         else
-          ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: displayedItems.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 10),
-            itemBuilder: (context, index) {
-              final item = displayedItems[index];
-              final c = _controllers[item.key]!;
-
-              return Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: item.status == 'high'
-                        ? const Color(0xFFFFCDD2)
-                        : item.status == 'low'
-                            ? const Color(0xFFFFE0B2)
-                            : const Color(0xFFE4EAE2),
-                    width: item.status == 'high' || item.status == 'low' ? 1.5 : 1,
-                  ),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x06000000),
-                      blurRadius: 4,
-                      offset: Offset(0, 1),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 标题与状态
-                    Row(
-                      children: [
-                        Text(
-                          item.name,
-                          style: const TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w600,
-                            color: ink,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFE0F2F1),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            item.abbr,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF00796B),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            item.hint,
-                            style: const TextStyle(fontSize: 11, color: muted),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        _buildStatusBadge(item.status),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-
-                    // 输入行：数值与参考区间
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          flex: 5,
-                          child: TextFormField(
-                            controller: c,
-                            enabled: !widget.saving,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            decoration: InputDecoration(
-                              isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 10,
-                              ),
-                              hintText: '测定值',
-                              hintStyle: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.normal,
-                                color: muted,
-                              ),
-                              suffixText: item.unit,
-                              suffixStyle: const TextStyle(
-                                fontSize: 11.5,
-                                color: muted,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            onChanged: (val) {
-                              final detected = val.trim().isEmpty
-                                  ? ''
-                                  : TumorMarkerItem.detectStatus(val, item.ref);
-                              _updateItem(
-                                item.copyWith(value: val.trim(), status: detected),
-                              );
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          flex: 4,
-                          child: InkWell(
-                            onTap: widget.saving ? null : () => _editRefAndUnit(item),
-                            borderRadius: BorderRadius.circular(6),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      const Text(
-                                        '参考: ',
-                                        style: TextStyle(fontSize: 10.5, color: muted),
-                                      ),
-                                      Expanded(
-                                        child: Text(
-                                          item.ref,
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w600,
-                                            color: ink,
-                                          ),
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                      const Icon(Icons.edit_outlined, size: 12, color: muted),
-                                    ],
-                                  ),
-                                  Text(
-                                    item.unit,
-                                    style: const TextStyle(fontSize: 10, color: muted),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-
-                    // 快捷状态切换行
-                    Row(
-                      children: [
-                        const Text(
-                          '快速状态: ',
-                          style: TextStyle(fontSize: 11, color: muted),
-                        ),
-                        const SizedBox(width: 4),
-                        _buildStatusChip(item, 'normal', '正常'),
-                        const SizedBox(width: 6),
-                        _buildStatusChip(item, 'high', '偏高 ↑'),
-                        const SizedBox(width: 6),
-                        _buildStatusChip(item, 'low', '偏低 ↓'),
-                        if (item.status.isNotEmpty || item.value.isNotEmpty) ...[
-                          const Spacer(),
-                          InkWell(
-                            onTap: widget.saving
-                                ? null
-                                : () {
-                                    c.clear();
-                                    _updateItem(item.copyWith(value: '', status: ''));
-                                  },
-                            child: const Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                              child: Text(
-                                '清空',
-                                style: TextStyle(fontSize: 11, color: muted),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
+          for (int i = 0; i < displayedItems.length; i++) ...[
+            if (i > 0) const SizedBox(height: 10),
+            RepaintBoundary(
+              child: _buildItemCard(displayedItems[i]),
+            ),
+          ],
         const SizedBox(height: 12),
 
         // 3. 底部人文关怀与严谨医疗提示
@@ -512,8 +340,203 @@ class _TumorMarkersEditorState extends State<TumorMarkersEditor> {
           ),
         ),
       ],
-    );
-  }
+    ),
+  );
+}
+
+Widget _buildItemCard(TumorMarkerItem item) {
+  final c = _controllers[item.key]!;
+
+  return Container(
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(
+        color: item.status == 'high'
+            ? const Color(0xFFFFCDD2)
+            : item.status == 'low'
+                ? const Color(0xFFFFE0B2)
+                : const Color(0xFFE4EAE2),
+        width: item.status == 'high' || item.status == 'low' ? 1.5 : 1,
+      ),
+      boxShadow: const [
+        BoxShadow(
+          color: Color(0x06000000),
+          blurRadius: 4,
+          offset: Offset(0, 1),
+        ),
+      ],
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 标题与状态
+        Row(
+          children: [
+            Text(
+              item.name,
+              style: const TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+                color: ink,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE0F2F1),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                item.abbr,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF00796B),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                item.hint,
+                style: const TextStyle(fontSize: 11, color: muted),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            _buildStatusBadge(item.status),
+          ],
+        ),
+        const SizedBox(height: 10),
+
+        // 输入行：数值与参考区间
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              flex: 5,
+              child: TextFormField(
+                controller: c,
+                enabled: !widget.saving,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+                decoration: InputDecoration(
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 10,
+                  ),
+                  hintText: '测定值',
+                  hintStyle: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.normal,
+                    color: muted,
+                  ),
+                  suffixText: item.unit,
+                  suffixStyle: const TextStyle(
+                    fontSize: 11.5,
+                    color: muted,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                onChanged: (val) {
+                  final detected = val.trim().isEmpty
+                      ? ''
+                      : TumorMarkerItem.detectStatus(val, item.ref);
+                  _updateItem(
+                    item.copyWith(value: val.trim(), status: detected),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              flex: 4,
+              child: InkWell(
+                onTap: widget.saving ? null : () => _editRefAndUnit(item),
+                borderRadius: BorderRadius.circular(6),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Text(
+                            '参考: ',
+                            style: TextStyle(fontSize: 10.5, color: muted),
+                          ),
+                          Expanded(
+                            child: Text(
+                              item.ref,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: ink,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const Icon(Icons.edit_outlined, size: 12, color: muted),
+                        ],
+                      ),
+                      Text(
+                        item.unit,
+                        style: const TextStyle(fontSize: 10, color: muted),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+
+        // 快捷状态切换行
+        Row(
+          children: [
+            const Text(
+              '快速状态: ',
+              style: TextStyle(fontSize: 11, color: muted),
+            ),
+            const SizedBox(width: 4),
+            _buildStatusChip(item, 'normal', '正常'),
+            const SizedBox(width: 6),
+            _buildStatusChip(item, 'high', '偏高 ↑'),
+            const SizedBox(width: 6),
+            _buildStatusChip(item, 'low', '偏低 ↓'),
+            if (item.status.isNotEmpty || item.value.isNotEmpty) ...[
+              const Spacer(),
+              InkWell(
+                onTap: widget.saving
+                    ? null
+                    : () {
+                        c.clear();
+                        _updateItem(item.copyWith(value: '', status: ''));
+                      },
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: Text(
+                    '清空',
+                    style: TextStyle(fontSize: 11, color: muted),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ],
+    ),
+  );
+}
 
   Widget _buildStatusBadge(String status) {
     return switch (status) {

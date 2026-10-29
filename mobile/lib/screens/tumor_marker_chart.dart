@@ -50,6 +50,22 @@ class _TumorMarkerChartState extends State<TumorMarkerChart> {
       }
     }
 
+    // 计算最新一次与前一次的历史涨跌
+    _MarkerDiffInfo? latestDiff;
+    if (points.length >= 2) {
+      final latest = points.last;
+      final prev = points[points.length - 2];
+      final dv = latest.value - prev.value;
+      final dp = prev.value > 0 ? ((dv / prev.value) * 100) : null;
+      latestDiff = _MarkerDiffInfo(
+        diffValue: dv,
+        diffPercent: dp,
+        isUp: dv > 0.0001,
+        isDown: dv < -0.0001,
+        prevDate: prev.at,
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -107,6 +123,161 @@ class _TumorMarkerChartState extends State<TumorMarkerChart> {
           '临床参考: ${selectedDef.hint} · 标准参考范围: ${selectedDef.ref} ${selectedDef.unit}',
           style: const TextStyle(fontSize: 11, color: muted),
         ),
+
+        // 1.1 涨跌幅对比高亮看板（直观展示最新涨跌）
+        if (points.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF7FAF7),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFE2EBE2)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            '最新记录: ${points.last.value} ${points.last.unit} (${points.last.status == 'high' ? '偏高' : '正常'})',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: points.last.status == 'high'
+                                  ? const Color(0xFFC62828)
+                                  : ink,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 1.5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: points.last.status == 'high'
+                                  ? const Color(0xFFFFEBEE)
+                                  : const Color(0xFFE8F5E9),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                color: points.last.status == 'high'
+                                    ? const Color(0xFFFFCDD2)
+                                    : const Color(0xFFC8E6C9),
+                                width: 0.8,
+                              ),
+                            ),
+                            child: Text(
+                              points.last.status == 'high' ? '偏高' : '正常',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: points.last.status == 'high'
+                                    ? const Color(0xFFC62828)
+                                    : const Color(0xFF2E7D32),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '检测时间: ${dayKey(points.last.at)}',
+                        style: const TextStyle(fontSize: 11, color: muted),
+                      ),
+                    ],
+                  ),
+                ),
+                if (latestDiff != null) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: latestDiff.isUp
+                          ? const Color(0xFFFFEBEE)
+                          : latestDiff.isDown
+                          ? const Color(0xFFE8F5E9)
+                          : const Color(0xFFF0F4F0),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: latestDiff.isUp
+                            ? const Color(0xFFFFCDD2)
+                            : latestDiff.isDown
+                            ? const Color(0xFFC8E6C9)
+                            : const Color(0xFFDFE6DF),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              latestDiff.isUp
+                                  ? Icons.trending_up
+                                  : latestDiff.isDown
+                                  ? Icons.trending_down
+                                  : Icons.trending_flat,
+                              size: 14,
+                              color: latestDiff.isUp
+                                  ? const Color(0xFFC62828)
+                                  : latestDiff.isDown
+                                  ? const Color(0xFF2E7D32)
+                                  : muted,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              latestDiff.formattedDiff(points.last.unit),
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: latestDiff.isUp
+                                    ? const Color(0xFFC62828)
+                                    : latestDiff.isDown
+                                    ? const Color(0xFF2E7D32)
+                                    : ink,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          '较前次 (${latestDiff.prevDate.month}/${latestDiff.prevDate.day})',
+                          style: const TextStyle(fontSize: 10, color: muted),
+                        ),
+                      ],
+                    ),
+                  ),
+                ] else if (points.length == 1) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0F4F0),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Text(
+                      '首次基线',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: muted,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
         const SizedBox(height: 16),
 
         // 2. 折线图绘制区
@@ -125,8 +296,10 @@ class _TumorMarkerChartState extends State<TumorMarkerChart> {
           SizedBox(
             height: 190,
             width: double.infinity,
-            child: CustomPaint(
-              painter: _TumorMarkerPainter(points: points),
+            child: RepaintBoundary(
+              child: CustomPaint(
+                painter: _TumorMarkerPainter(points: points),
+              ),
             ),
           ),
 
@@ -136,24 +309,168 @@ class _TumorMarkerChartState extends State<TumorMarkerChart> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                '最早记录: ${dayKey(points.first.at)}',
+                '最早记录: ${dayKey(points.first.at)} (${points.first.value} ${points.first.unit})',
                 style: const TextStyle(fontSize: 10.5, color: muted),
               ),
               Text(
-                '最新记录: ${points.last.value} ${points.last.unit} (${points.last.status == 'high' ? '偏高' : '正常'})',
-                style: TextStyle(
+                '共 ${points.length} 次检测记录',
+                style: const TextStyle(
                   fontSize: 10.5,
                   fontWeight: FontWeight.w600,
-                  color: points.last.status == 'high'
-                      ? const Color(0xFFC62828)
-                      : const Color(0xFF2E7D32),
+                  color: pine,
                 ),
               ),
             ],
           ),
+
+          // 3. 历次随访检验测值对比清单（>=2个点时直观展现每次变化）
+          if (points.length >= 2) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFAFCFA),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFE8EFE8)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '历次随访测值对比流',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: ink,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  for (var i = points.length - 1; i >= 0; i--) ...[
+                    Builder(
+                      builder: (_) {
+                        final pt = points[i];
+                        final hasPrev = i > 0;
+                        final prevPt = hasPrev ? points[i - 1] : null;
+                        final dv = prevPt != null ? pt.value - prevPt.value : null;
+                        final dp = (prevPt != null && prevPt.value > 0 && dv != null)
+                            ? (dv / prevPt.value) * 100
+                            : null;
+                        final isUp = dv != null && dv > 0.0001;
+                        final isDown = dv != null && dv < -0.0001;
+
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 3),
+                          child: Row(
+                            children: [
+                              Text(
+                                dayKey(pt.at),
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: muted,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '${pt.value} ${pt.unit}',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: pt.status == 'high'
+                                      ? const Color(0xFFC62828)
+                                      : ink,
+                                ),
+                              ),
+                              if (pt.status == 'high') ...[
+                                const SizedBox(width: 4),
+                                const Text(
+                                  '↑',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFFC62828),
+                                  ),
+                                ),
+                              ],
+                              const Spacer(),
+                              if (hasPrev && dv != null) ...[
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 1,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: isUp
+                                        ? const Color(0xFFFFEBEE)
+                                        : isDown
+                                        ? const Color(0xFFE8F5E9)
+                                        : const Color(0xFFF5F5F5),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    isUp
+                                        ? '+${dv >= 10 ? dv.toStringAsFixed(1) : dv.toStringAsFixed(2)}${dp != null ? ' (+${dp.toStringAsFixed(1)}%)' : ''} ↑'
+                                        : isDown
+                                        ? '${dv >= -10 ? dv.toStringAsFixed(1) : dv.toStringAsFixed(2)}${dp != null ? ' (${dp.toStringAsFixed(1)}%)' : ''} ↓'
+                                        : '持平',
+                                    style: TextStyle(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: isUp
+                                          ? const Color(0xFFC62828)
+                                          : isDown
+                                          ? const Color(0xFF2E7D32)
+                                          : muted,
+                                    ),
+                                  ),
+                                ),
+                              ] else
+                                const Text(
+                                  '基线对照',
+                                  style: TextStyle(fontSize: 10.5, color: muted),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
         ],
       ],
     );
+  }
+}
+
+class _MarkerDiffInfo {
+  final double diffValue;
+  final double? diffPercent;
+  final bool isUp;
+  final bool isDown;
+  final DateTime prevDate;
+
+  const _MarkerDiffInfo({
+    required this.diffValue,
+    required this.diffPercent,
+    required this.isUp,
+    required this.isDown,
+    required this.prevDate,
+  });
+
+  String formattedDiff(String unit) {
+    if (!isUp && !isDown) return '持平';
+    final sign = isUp ? '+' : '';
+    final valStr = diffValue.abs() >= 10
+        ? diffValue.toStringAsFixed(1)
+        : diffValue.toStringAsFixed(2);
+    final arrow = isUp ? '↑' : '↓';
+    if (diffPercent != null) {
+      final pctSign = diffPercent! > 0 ? '+' : '';
+      return '$sign$valStr ($pctSign${diffPercent!.toStringAsFixed(1)}%) $arrow';
+    }
+    return '$sign$valStr $arrow';
   }
 }
 

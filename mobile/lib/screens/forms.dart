@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -233,6 +234,15 @@ class _RecordFormState extends State<RecordForm> {
   String attachmentName = '';
   String attachmentExtension = '';
   List<TumorMarkerItem> tumorMarkers = [];
+  // 缓存图片附件的异步读取，避免表单或键盘重建时重复触发磁盘 IO 与解码
+  final Map<String, Future<Uint8List?>> _attachmentFutures = {};
+
+  Future<Uint8List?> _getAttachmentFuture(String id) {
+    return _attachmentFutures.putIfAbsent(
+      id,
+      () => widget.store.vault.attachment(id),
+    );
+  }
   bool get isChemoJourney {
     if (widget.kind == 'journey') {
       return controllers['category']?.text == 'chemo';
@@ -375,6 +385,14 @@ class _RecordFormState extends State<RecordForm> {
   }
 
   Future<void> pickAt() async {
+    // 点击日期选择前若有输入框处于聚焦态，先释放焦点收回软键盘，避免键盘收起动画与日期弹窗转场并发丢帧
+    final currentFocus = FocusScope.of(context);
+    if (currentFocus.hasFocus) {
+      currentFocus.unfocus();
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    if (!mounted) return;
+
     final date = await showDatePicker(
       context: context,
       initialDate: at,
@@ -633,11 +651,13 @@ class _RecordFormState extends State<RecordForm> {
                             spec.key == 'hospital')
                           Padding(
                             padding: const EdgeInsets.only(bottom: 22),
-                            child: TumorMarkersEditor(
-                              items: tumorMarkers,
-                              onChanged: (updated) =>
-                                  setState(() => tumorMarkers = updated),
-                              saving: saving,
+                            child: RepaintBoundary(
+                              child: TumorMarkersEditor(
+                                items: tumorMarkers,
+                                // 数据保存在本地变量供保存使用，无需刷新外层整个大表单
+                                onChanged: (updated) => tumorMarkers = updated,
+                                saving: saving,
+                              ),
                             ),
                           ),
                       ],
@@ -684,7 +704,7 @@ class _RecordFormState extends State<RecordForm> {
                               child: Column(
                                 children: [
                                   FutureBuilder(
-                                    future: widget.store.vault.attachment(
+                                    future: _getAttachmentFuture(
                                       photo['id']!,
                                     ),
                                     builder: (context, snapshot) =>
@@ -721,9 +741,10 @@ class _RecordFormState extends State<RecordForm> {
                                   TextButton(
                                     onPressed: saving
                                         ? null
-                                        : () => setState(
-                                            () => photos.remove(photo),
-                                          ),
+                                        : () => setState(() {
+                                            _attachmentFutures.remove(photo['id']);
+                                            photos.remove(photo);
+                                          }),
                                     child: const Text('移除'),
                                   ),
                                 ],

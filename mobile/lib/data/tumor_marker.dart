@@ -266,3 +266,205 @@ String summarizeTumorMarkers(List<TumorMarkerItem> items) {
   }
   return parts.join('，');
 }
+
+/// 单项标志物与前次对比差异
+class TumorMarkerDiff {
+  final TumorMarkerItem current;
+  final TumorMarkerItem? previous;
+  final double? prevVal;
+  final double? currentVal;
+  final double? diffValue;
+  final double? diffPercent;
+  final String trend; // 'up', 'down', 'flat', 'none'
+  final bool isHigh;
+  final bool isNewlyHigh;
+  final bool isReturnedNormal;
+
+  const TumorMarkerDiff({
+    required this.current,
+    this.previous,
+    this.prevVal,
+    this.currentVal,
+    this.diffValue,
+    this.diffPercent,
+    required this.trend,
+    required this.isHigh,
+    required this.isNewlyHigh,
+    required this.isReturnedNormal,
+  });
+
+  String get formattedDiff {
+    if (prevVal == null || currentVal == null || diffValue == null) {
+      return previous != null && previous!.value.isNotEmpty ? '本次未测' : '首笔基线';
+    }
+    if (trend == 'flat') return '持平';
+    final sign = diffValue! > 0 ? '+' : '';
+    final valStr = diffValue!.abs() >= 10
+        ? diffValue!.toStringAsFixed(1)
+        : diffValue!.toStringAsFixed(2);
+    final arrow = trend == 'up' ? '↑' : '↓';
+    if (diffPercent != null) {
+      final pctSign = diffPercent! > 0 ? '+' : '';
+      return '$sign$valStr ($pctSign${diffPercent!.toStringAsFixed(1)}%) $arrow';
+    }
+    return '$sign$valStr $arrow';
+  }
+}
+
+/// 肿瘤标志物整体对比结果
+class TumorMarkersComparison {
+  final bool hasPrevious;
+  final DateTime? currentAt;
+  final DateTime? previousAt;
+  final List<TumorMarkerDiff> diffs;
+  final List<TumorMarkerDiff> keyChanges;
+  final int upCount;
+  final int downCount;
+  final int flatCount;
+  final int newlyHighCount;
+  final int returnedNormalCount;
+  final String summary;
+
+  const TumorMarkersComparison({
+    required this.hasPrevious,
+    this.currentAt,
+    this.previousAt,
+    required this.diffs,
+    required this.keyChanges,
+    required this.upCount,
+    required this.downCount,
+    required this.flatCount,
+    required this.newlyHighCount,
+    required this.returnedNormalCount,
+    required this.summary,
+  });
+}
+
+/// 对比当前标志物列表与前次标志物列表
+TumorMarkersComparison compareTumorMarkers(
+  List<TumorMarkerItem> current,
+  List<TumorMarkerItem>? previous, {
+  DateTime? currentAt,
+  DateTime? previousAt,
+}) {
+  if (previous == null) {
+    final diffs = current.map((c) {
+      final curVal = double.tryParse(c.value.trim());
+      return TumorMarkerDiff(
+        current: c,
+        previous: null,
+        currentVal: curVal,
+        trend: 'none',
+        isHigh: c.status == 'high',
+        isNewlyHigh: false,
+        isReturnedNormal: false,
+      );
+    }).toList();
+
+    return TumorMarkersComparison(
+      hasPrevious: false,
+      currentAt: currentAt,
+      previousAt: null,
+      diffs: diffs,
+      keyChanges: const [],
+      upCount: 0,
+      downCount: 0,
+      flatCount: 0,
+      newlyHighCount: 0,
+      returnedNormalCount: 0,
+      summary: '基线记录',
+    );
+  }
+
+  final prevMap = {for (final p in previous) p.key: p};
+  final diffs = <TumorMarkerDiff>[];
+  final keyChanges = <TumorMarkerDiff>[];
+
+  int upCount = 0;
+  int downCount = 0;
+  int flatCount = 0;
+  int newlyHighCount = 0;
+  int returnedNormalCount = 0;
+
+  for (final cur in current) {
+    final prev = prevMap[cur.key];
+    final curVal = double.tryParse(cur.value.trim());
+    final prevVal = prev != null ? double.tryParse(prev.value.trim()) : null;
+
+    double? diffVal;
+    double? diffPct;
+    String trend = 'none';
+
+    if (curVal != null && prevVal != null) {
+      diffVal = curVal - prevVal;
+      if (prevVal > 0) {
+        diffPct = (diffVal / prevVal) * 100;
+      }
+      if (diffVal > 0.0001) {
+        trend = 'up';
+        upCount++;
+      } else if (diffVal < -0.0001) {
+        trend = 'down';
+        downCount++;
+      } else {
+        trend = 'flat';
+        flatCount++;
+      }
+    }
+
+    final isHigh = cur.status == 'high';
+    final wasHigh = prev?.status == 'high';
+    final isNewlyHigh = isHigh && !wasHigh && cur.value.isNotEmpty;
+    final isReturnedNormal = wasHigh && cur.status == 'normal';
+
+    if (isNewlyHigh) newlyHighCount++;
+    if (isReturnedNormal) returnedNormalCount++;
+
+    final diff = TumorMarkerDiff(
+      current: cur,
+      previous: prev,
+      prevVal: prevVal,
+      currentVal: curVal,
+      diffValue: diffVal,
+      diffPercent: diffPct,
+      trend: trend,
+      isHigh: isHigh,
+      isNewlyHigh: isNewlyHigh,
+      isReturnedNormal: isReturnedNormal,
+    );
+
+    diffs.add(diff);
+
+    // 关键变动项目：新增偏高、恢复正常、偏高且继续上升
+    if (isNewlyHigh || isReturnedNormal || (isHigh && trend == 'up')) {
+      keyChanges.add(diff);
+    }
+  }
+
+  String summary;
+  if (newlyHighCount > 0) {
+    summary = '⚠️ 新增偏高项，需关注';
+  } else if (returnedNormalCount > 0 && upCount == 0) {
+    summary = '🎉 指标好转改善';
+  } else if (downCount > upCount) {
+    summary = '整体向好回落';
+  } else if (upCount > downCount) {
+    summary = '部分指标有所上升';
+  } else {
+    summary = '指标整体相对平稳';
+  }
+
+  return TumorMarkersComparison(
+    hasPrevious: true,
+    currentAt: currentAt,
+    previousAt: previousAt,
+    diffs: diffs,
+    keyChanges: keyChanges,
+    upCount: upCount,
+    downCount: downCount,
+    flatCount: flatCount,
+    newlyHighCount: newlyHighCount,
+    returnedNormalCount: returnedNormalCount,
+    summary: summary,
+  );
+}
