@@ -172,6 +172,86 @@ void main() {
       );
     }
   });
+
+  test('do-not-disturb (DND) suppresses reminders falling within quiet hours', () {
+    // 1. 同一天内的免打扰 (如 12:00 - 14:00)
+    expect(isMinuteInDnd(11 * 60 + 59, 12 * 60, 14 * 60), isFalse);
+    expect(isMinuteInDnd(12 * 60, 12 * 60, 14 * 60), isTrue);
+    expect(isMinuteInDnd(13 * 60, 12 * 60, 14 * 60), isTrue);
+    expect(isMinuteInDnd(14 * 60, 12 * 60, 14 * 60), isFalse);
+
+    // 2. 跨夜免打扰 (如 22:00 - 07:00)
+    expect(isMinuteInDnd(21 * 60 + 59, 22 * 60, 7 * 60), isFalse);
+    expect(isMinuteInDnd(22 * 60, 22 * 60, 7 * 60), isTrue);
+    expect(isMinuteInDnd(23 * 60 + 30, 22 * 60, 7 * 60), isTrue);
+    expect(isMinuteInDnd(0, 22 * 60, 7 * 60), isTrue);
+    expect(isMinuteInDnd(6 * 60 + 59, 22 * 60, 7 * 60), isTrue);
+    expect(isMinuteInDnd(7 * 60, 22 * 60, 7 * 60), isFalse);
+    expect(isMinuteInDnd(12 * 60, 22 * 60, 7 * 60), isFalse);
+
+    // 3. 开始与结束相同视为不生效
+    expect(isMinuteInDnd(10 * 60, 10 * 60, 10 * 60), isFalse);
+
+    // 4. 结合 planReminders 测试
+    final data = CareData(
+      settings: {
+        'notifyWater': 'true',
+        'waterStart': '06:00',
+        'waterEnd': '23:00',
+        'waterInterval': '60',
+        'dndEnabled': 'true',
+        'dndStart': '22:00',
+        'dndEnd': '07:00',
+      },
+    );
+    final now = DateTime(2026, 10, 3, 5, 0);
+    final planned = planReminders(data, now, days: 1);
+    expect(planned.every((r) => r.at.hour >= 7 && r.at.hour < 22), isTrue);
+    expect(planned.any((r) => r.at.hour == 6), isFalse);
+    expect(planned.any((r) => r.at.hour == 22), isFalse);
+    expect(planned.any((r) => r.at.hour == 23), isFalse);
+    expect(planned.any((r) => r.at.hour == 7), isTrue);
+    expect(planned.any((r) => r.at.hour == 21), isTrue);
+
+    // 5. 自定义多时段免打扰（如午休 12:00-13:00 与夜间 22:00-07:00）
+    final multiDndData = CareData(
+      settings: {
+        'notifyWater': 'true',
+        'waterStart': '06:00',
+        'waterEnd': '23:00',
+        'waterInterval': '60',
+        'dndEnabled': 'true',
+        'dndPeriods': '12:00-13:00,15:00-16:00,22:00-07:00',
+      },
+    );
+    expect(parseDndPeriods(multiDndData.settings), [
+      const DndPeriod('12:00', '13:00'),
+      const DndPeriod('15:00', '16:00'),
+      const DndPeriod('22:00', '07:00'),
+    ]);
+    expect(
+      serializeDndPeriods([
+        const DndPeriod('12:00', '13:00'),
+        const DndPeriod('22:00', '07:00'),
+      ]),
+      '12:00-13:00,22:00-07:00',
+    );
+    // 判断午休时刻 12:30 处于免打扰中
+    expect(isDnd(DateTime(2026, 10, 3, 12, 30), multiDndData.settings), isTrue);
+    // 判断小憩时刻 15:15 处于免打扰中
+    expect(isDnd(DateTime(2026, 10, 3, 15, 15), multiDndData.settings), isTrue);
+    // 判断非免打扰时刻 14:00
+    expect(isDnd(DateTime(2026, 10, 3, 14, 0), multiDndData.settings), isFalse);
+    // 判断跨夜时刻 23:30 处于免打扰中
+    expect(isDnd(DateTime(2026, 10, 3, 23, 30), multiDndData.settings), isTrue);
+
+    final multiPlanned = planReminders(multiDndData, now, days: 1);
+    // 验证 12 点和 15 点的整点喝水提醒被免打扰过滤掉
+    expect(multiPlanned.any((r) => r.at.hour == 12), isFalse);
+    expect(multiPlanned.any((r) => r.at.hour == 15), isFalse);
+    // 验证其他有效时段依然存在
+    expect(multiPlanned.any((r) => r.at.hour == 14), isTrue);
+  });
   test('health records validate required fields and nine images survive backup restore', () async {
     for (final record in [
       CareRecord(kind: 'weight', fields: {}),

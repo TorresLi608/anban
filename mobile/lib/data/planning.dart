@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'models.dart';
 
 const healthKinds = [
@@ -30,6 +32,100 @@ int minuteOfDay(String value) {
 
 String minuteLabel(int value) =>
     '${(value ~/ 60).toString().padLeft(2, '0')}:${(value % 60).toString().padLeft(2, '0')}';
+
+bool isMinuteInDnd(int minute, int start, int end) {
+  if (start == end) return false;
+  if (start < end) {
+    return minute >= start && minute < end;
+  } else {
+    // 跨夜时段（例如 22:00 至次日 07:00）
+    return minute >= start || minute < end;
+  }
+}
+
+/// 免打扰时段模型（支持跨夜与白天小憩）
+class DndPeriod {
+  final String start;
+  final String end;
+  const DndPeriod(this.start, this.end);
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DndPeriod &&
+          runtimeType == other.runtimeType &&
+          start == other.start &&
+          end == other.end;
+
+  @override
+  int get hashCode => Object.hash(start, end);
+
+  @override
+  String toString() => '$start-$end';
+}
+
+/// 解析免打扰时段列表，支持逗号分隔、JSON 格式以及对旧版单个起止时间的向后兼容
+List<DndPeriod> parseDndPeriods(Map<String, String> s) {
+  final raw = s['dndPeriods']?.trim() ?? '';
+  if (raw.isNotEmpty) {
+    if (raw.startsWith('[')) {
+      try {
+        final list = jsonDecode(raw) as List;
+        final parsed = <DndPeriod>[];
+        for (final item in list) {
+          if (item is Map && item['start'] is String && item['end'] is String) {
+            parsed.add(
+              DndPeriod(item['start'] as String, item['end'] as String),
+            );
+          }
+        }
+        if (parsed.isNotEmpty) return parsed;
+      } catch (_) {}
+    } else {
+      final items = raw
+          .split(',')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .map((e) {
+            final parts = e.split('-');
+            return parts.length == 2
+                ? DndPeriod(parts[0].trim(), parts[1].trim())
+                : null;
+          })
+          .whereType<DndPeriod>()
+          .toList();
+      if (items.isNotEmpty) return items;
+    }
+  }
+  // 向后兼容旧字段
+  final startStr = s['dndStart'] ?? '22:00';
+  final endStr = s['dndEnd'] ?? '07:00';
+  if (startStr.isNotEmpty && endStr.isNotEmpty) {
+    return [DndPeriod(startStr, endStr)];
+  }
+  return const [DndPeriod('22:00', '07:00')];
+}
+
+/// 将免打扰时段列表序列化为格式化存储字符串
+String serializeDndPeriods(List<DndPeriod> periods) =>
+    periods.map((p) => '${p.start}-${p.end}').join(',');
+
+bool isDnd(DateTime at, Map<String, String> s) {
+  if (s['dndEnabled'] != 'true') return false;
+  final periods = parseDndPeriods(s);
+  if (periods.isEmpty) return false;
+  final minute = at.hour * 60 + at.minute;
+  for (final period in periods) {
+    try {
+      final start = minuteOfDay(period.start);
+      final end = minuteOfDay(period.end);
+      if (isMinuteInDnd(minute, start, end)) {
+        return true;
+      }
+    } catch (_) {}
+  }
+  return false;
+}
 int settingInt(
   Map<String, String> s,
   String key,
@@ -185,6 +281,7 @@ List<PlannedReminder> planReminders(
     String body, {
     DateTime? dueAt,
   }) {
+    if (isDnd(at, s)) return;
     if (at.isAfter(now)) {
       result.add(
         PlannedReminder(

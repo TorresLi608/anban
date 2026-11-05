@@ -34,6 +34,7 @@ class _SettingsPageState extends State<SettingsPage> {
   late Map<String, bool> switches;
   late String reminderMode;
   late bool keepAlive;
+  late List<DndPeriod> dndPeriods;
   bool saving = false;
   String? error;
   @override
@@ -42,6 +43,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final s = widget.store.data.settings;
     reminderMode = normalizedReminderMode(s['reminderMode']);
     keepAlive = s['keepAlive'] != 'false';
+    dndPeriods = List<DndPeriod>.from(parseDndPeriods(s));
     final defaults = {
       'mealStart': '07:30',
       'mealEnd': '18:30',
@@ -50,6 +52,8 @@ class _SettingsPageState extends State<SettingsPage> {
       'waterStart': '',
       'waterEnd': '',
       'waterInterval': '30',
+      'dndStart': '22:00',
+      'dndEnd': '07:00',
       for (final category in journeyCategories.keys) ...{
         'lead_$category': '3',
         'count_$category': '1',
@@ -66,6 +70,7 @@ class _SettingsPageState extends State<SettingsPage> {
         ...journeyCategories.keys.map((k) => 'notify_$k'),
       ])
         k: s[k] == 'true',
+      'dndEnabled': s['dndEnabled'] == 'true',
     };
   }
 
@@ -103,6 +108,24 @@ class _SettingsPageState extends State<SettingsPage> {
       for (final category in journeyCategories.keys) {
         settingInt(values, 'lead_$category', 3, 0, 90);
         settingInt(values, 'count_$category', 1, 1, 8);
+      }
+      if (switches['dndEnabled'] == true) {
+        if (dndPeriods.isEmpty) {
+          throw const FormatException('请至少添加一个免打扰时段');
+        }
+        for (final period in dndPeriods) {
+          if (period.start.isEmpty || period.end.isEmpty) {
+            throw const FormatException('请填写免打扰开始和结束时间');
+          }
+          if (minuteOfDay(period.start) == minuteOfDay(period.end)) {
+            throw FormatException('免打扰时段 ${period.start} 的开始时间与结束时间不能相同');
+          }
+        }
+      }
+      values['dndPeriods'] = serializeDndPeriods(dndPeriods);
+      if (dndPeriods.isNotEmpty) {
+        values['dndStart'] = dndPeriods.first.start;
+        values['dndEnd'] = dndPeriods.first.end;
       }
       if (switches.values.any((v) => v) &&
           widget.reminders.supported &&
@@ -196,7 +219,9 @@ class _SettingsPageState extends State<SettingsPage> {
     ),
   );
   Widget _buildOverviewHeader() {
-    final activeCount = switches.values.where((v) => v).length;
+    final activeCount = switches.entries
+        .where((e) => e.key.startsWith('notify') && e.value)
+        .length;
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
       padding: const EdgeInsets.all(18),
@@ -344,6 +369,197 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Future<DndPeriod?> _showDndPeriodDialog(
+    BuildContext context, {
+    DndPeriod? initial,
+  }) async {
+    String start = initial?.start ?? '12:00';
+    String end = initial?.end ?? '13:00';
+
+    return showDialog<DndPeriod>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final isOvernight = minuteOfDay(start) > minuteOfDay(end);
+            final isSame = minuteOfDay(start) == minuteOfDay(end);
+
+            Future<void> pickTime(bool isStart) async {
+              final current = isStart ? start : end;
+              final minutes = minuteOfDay(current);
+              final picked = await showTimePicker(
+                context: context,
+                initialTime: TimeOfDay(
+                  hour: minutes ~/ 60,
+                  minute: minutes % 60,
+                ),
+              );
+              if (picked != null) {
+                setDialogState(() {
+                  final formatted = minuteLabel(
+                    picked.hour * 60 + picked.minute,
+                  );
+                  if (isStart) {
+                    start = formatted;
+                  } else {
+                    end = formatted;
+                  }
+                });
+              }
+            }
+
+            return AlertDialog(
+              title: Text(initial == null ? '添加免打扰时段' : '编辑免打扰时段'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '快捷预设：',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: muted,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        ActionChip(
+                          label: const Text('午休 12:00-13:00'),
+                          onPressed: () => setDialogState(() {
+                            start = '12:00';
+                            end = '13:00';
+                          }),
+                        ),
+                        ActionChip(
+                          label: const Text('小憩 15:00-16:00'),
+                          onPressed: () => setDialogState(() {
+                            start = '15:00';
+                            end = '16:00';
+                          }),
+                        ),
+                        ActionChip(
+                          label: const Text('夜间 22:00-07:00'),
+                          onPressed: () => setDialogState(() {
+                            start = '22:00';
+                            end = '07:00';
+                          }),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: InkWell(
+                            onTap: () => pickTime(true),
+                            borderRadius: BorderRadius.circular(10),
+                            child: InputDecorator(
+                              decoration: const InputDecoration(
+                                labelText: '开始时间',
+                                prefixIcon: Icon(
+                                  Icons.access_time,
+                                  size: 18,
+                                  color: pine,
+                                ),
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
+                              ),
+                              child: Text(
+                                start,
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: pine,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: InkWell(
+                            onTap: () => pickTime(false),
+                            borderRadius: BorderRadius.circular(10),
+                            child: InputDecorator(
+                              decoration: const InputDecoration(
+                                labelText: '结束时间',
+                                prefixIcon: Icon(
+                                  Icons.access_time_filled,
+                                  size: 18,
+                                  color: pine,
+                                ),
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
+                              ),
+                              child: Text(
+                                end,
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: pine,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (isSame)
+                      const Text(
+                        '⚠️ 开始时间与结束时间不能相同',
+                        style: TextStyle(fontSize: 12, color: danger),
+                      )
+                    else if (isOvernight)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEAEFF8),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Text(
+                          '🌙 跨夜时段（至次日）',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF2855A4),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: isSame
+                      ? null
+                      : () => Navigator.pop(ctx, DndPeriod(start, end)),
+                  child: const Text('确定'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
@@ -468,7 +684,158 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: 20),
           ],
 
-          // 4. 提醒方式与声音
+          // 4. 免打扰时段
+          Surface(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildCardHeader(
+                  icon: Icons.bedtime_rounded,
+                  title: '免打扰时段',
+                  subtitle: '休息时段静默无扰，保障患者深度睡眠与午休小憩',
+                ),
+                toggle('dndEnabled', '开启免打扰时段'),
+                if (switches['dndEnabled'] == true) ...[
+                  const Divider(height: 20),
+                  // 多时段列表
+                  ...dndPeriods.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final period = entry.value;
+                    final isOvernight =
+                        minuteOfDay(period.start) > minuteOfDay(period.end);
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF7FAF7),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: const Color(0xFFE2EBE2),
+                          width: 0.8,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            isOvernight
+                                ? Icons.nightlight_outlined
+                                : Icons.wb_sunny_outlined,
+                            size: 18,
+                            color: pine,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Text(
+                                  '${period.start} - ${isOvernight ? '次日 ' : ''}${period.end}',
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                    color: ink,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: isOvernight
+                                        ? const Color(0xFFEAEFF8)
+                                        : const Color(0xFFEBF5EB),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    isOvernight ? '跨夜' : '白天',
+                                    style: TextStyle(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: isOvernight
+                                          ? const Color(0xFF2855A4)
+                                          : pine,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(
+                              Icons.edit_outlined,
+                              size: 18,
+                              color: muted,
+                            ),
+                            tooltip: '编辑时段',
+                            onPressed: saving
+                                ? null
+                                : () async {
+                                    final updated =
+                                        await _showDndPeriodDialog(
+                                          context,
+                                          initial: period,
+                                        );
+                                    if (updated != null && mounted) {
+                                      setState(
+                                        () => dndPeriods[index] = updated,
+                                      );
+                                    }
+                                  },
+                          ),
+                          if (dndPeriods.length > 1)
+                            IconButton(
+                              icon: const Icon(
+                                Icons.delete_outline,
+                                size: 18,
+                                color: danger,
+                              ),
+                              tooltip: '删除时段',
+                              onPressed: saving
+                                  ? null
+                                  : () => setState(
+                                      () => dndPeriods.removeAt(index),
+                                    ),
+                            ),
+                        ],
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 4),
+                  OutlinedButton.icon(
+                    onPressed: saving
+                        ? null
+                        : () async {
+                            final added = await _showDndPeriodDialog(context);
+                            if (added != null && mounted) {
+                              setState(() => dndPeriods.add(added));
+                            }
+                          },
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('添加免打扰时段'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: pine,
+                      side: const BorderSide(color: pine, width: 0.8),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  const Note(
+                    '各时段内（支持添加多段，如午休 12:00-13:00、小憩 15:00-16:00、夜间 22:00 至次日 07:00）将暂停触发各项通知与闹钟。',
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // 5. 提醒方式与声音
           Surface(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -587,7 +954,7 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: 20),
           ],
 
-          // 6. 各类下一次通知排程
+          // 7. 各类下一次通知排程
           Surface(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -603,7 +970,7 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const SizedBox(height: 20),
 
-          // 7. 系统状态与后台保活诊断
+          // 8. 系统状态与后台保活诊断
           Surface(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

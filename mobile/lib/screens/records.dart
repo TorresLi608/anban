@@ -1178,8 +1178,10 @@ class _RecordsPageState extends State<RecordsPage> {
     final diff = _computeRecordDiff(current, prev);
     if (diff == null) return const SizedBox.shrink();
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 6,
+      runSpacing: 4,
       children: [
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
@@ -1206,13 +1208,11 @@ class _RecordsPageState extends State<RecordsPage> {
             ],
           ),
         ),
-        if (diff.subLabel != null && diff.subLabel!.isNotEmpty) ...[
-          const SizedBox(width: 6),
+        if (diff.subLabel != null && diff.subLabel!.isNotEmpty)
           Text(
             diff.subLabel!,
             style: const TextStyle(fontSize: 11, color: muted),
           ),
-        ],
       ],
     );
   }
