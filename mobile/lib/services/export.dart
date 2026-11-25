@@ -19,6 +19,8 @@ Future<Uint8List> medicalPdf(CareData data, {int days = 30}) async {
                   'temperature',
                   'heartRate',
                   'bloodOxygen',
+                  'bloodGlucose',
+                  'urine',
                   'memory',
                   'vital',
                   'dose',
@@ -35,6 +37,8 @@ Future<Uint8List> medicalPdf(CareData data, {int days = 30}) async {
     'temperature': '体温',
     'heartRate': '心率',
     'bloodOxygen': '血氧',
+    'bloodGlucose': '血糖',
+    'urine': '小便',
     'memory': '随便记一笔',
     'vital': '体征',
     'dose': '服药',
@@ -48,6 +52,9 @@ Future<Uint8List> medicalPdf(CareData data, {int days = 30}) async {
     'temperature' => '${r.text('temperature')}℃；${r.text('note')}',
     'heartRate' => '${r.text('heartRate')} 次/分；${r.text('note')}',
     'bloodOxygen' => '${r.text('bloodOxygen')}%；${r.text('note')}',
+    'bloodGlucose' => '${r.text('bloodGlucose')} mmol/L；${r.text('note')}',
+    'urine' =>
+      '${selectedValues(r.text('status')).join('、')}${r.text('volume').isNotEmpty ? '；排尿量 ${r.text('volume')} ml' : ''}；${r.text('color')}；${r.text('appearance')}；${r.text('note')}',
     'memory' =>
       '${r.text('title', '随便记一笔')}；${r.text('note')}；附件 ${r.text('filename')}',
     'tumorMarker' =>

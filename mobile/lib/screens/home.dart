@@ -112,6 +112,15 @@ class HomePage extends StatelessWidget {
                       ),
                       _QuickActionTile(
                         width: itemWidth,
+                        icon: Icons.opacity_outlined,
+                        iconColor: const Color(0xFF6A1B9A),
+                        badgeBg: const Color(0xFFF3E5F5),
+                        title: '测血糖',
+                        subtitle: '血糖水平监测',
+                        onTap: () => editRecord(context, store, 'bloodGlucose'),
+                      ),
+                      _QuickActionTile(
+                        width: itemWidth,
                         icon: Icons.water_drop_outlined,
                         iconColor: const Color(0xFF0288D1),
                         badgeBg: const Color(0xFFE1F5FE),

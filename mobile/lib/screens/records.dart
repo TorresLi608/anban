@@ -191,6 +191,26 @@ class _RecordsPageState extends State<RecordsPage> {
           const SizedBox(height: 14),
         ],
 
+        // 3.3 血糖水平走势图
+        if (kind == 'bloodGlucose' && items.isNotEmpty) ...[
+          Section(
+            '血糖水平走势',
+            trailing: SegmentedButton<int>(
+              segments: const [
+                ButtonSegment(value: 1, label: Text('今日')),
+                ButtonSegment(value: 7, label: Text('7天')),
+                ButtonSegment(value: 30, label: Text('30天')),
+              ],
+              selected: {period},
+              onSelectionChanged: (s) => setState(() => period = s.first),
+            ),
+            child: Surface(
+              child: BloodGlucoseChart(records: items, days: period),
+            ),
+          ),
+          const SizedBox(height: 14),
+        ],
+
         // 4. 记录历史列表（卡片化设计）
         Section(
           '历史记录流',
@@ -504,6 +524,83 @@ class _RecordsPageState extends State<RecordsPage> {
                                       },
                                     ),
                                   ],
+                                  if (r.kind == 'bloodGlucose') ...[
+                                    Builder(
+                                      builder: (_) {
+                                        final val =
+                                            double.tryParse(r.text('bloodGlucose')) ??
+                                            5.6;
+                                        final (label, textColor, bg, border) =
+                                            val < 3.9
+                                                ? (
+                                                  '偏低 <3.9',
+                                                  const Color(0xFFC62828),
+                                                  const Color(0xFFFFEBEE),
+                                                  const Color(0xFFFFCDD2),
+                                                )
+                                                : val > 11.1
+                                                ? (
+                                                  '偏高 >11.1',
+                                                  const Color(0xFFE65100),
+                                                  const Color(0xFFFFF3E0),
+                                                  const Color(0xFFFFE0B2),
+                                                )
+                                                : (
+                                                  '正常',
+                                                  const Color(0xFF2E7D32),
+                                                  const Color(0xFFE8F5E9),
+                                                  const Color(0xFFC8E6C9),
+                                                );
+                                        return Padding(
+                                          padding: const EdgeInsets.only(top: 6),
+                                          child: Row(
+                                            children: [
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 7,
+                                                      vertical: 2,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: bg,
+                                                  borderRadius:
+                                                      BorderRadius.circular(5),
+                                                  border: Border.all(
+                                                    color: border,
+                                                    width: 0.6,
+                                                  ),
+                                                ),
+                                                child: Text(
+                                                  label,
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    fontWeight:
+                                                        FontWeight.bold,
+                                                    color: textColor,
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                val < 3.9
+                                                    ? '低于常规参考，注意补充糖分'
+                                                    : val > 11.1
+                                                    ? '高于常规参考，注意饮食与监测'
+                                                    : '在适宜控制范围内',
+                                                style: TextStyle(
+                                                  fontSize: 11.5,
+                                                  color:
+                                                      (val < 3.9 || val > 11.1)
+                                                          ? textColor
+                                                          : muted,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ],
                                   if (r.text('note').isNotEmpty) ...[
                                     const SizedBox(height: 6),
                                     Container(
@@ -631,10 +728,18 @@ class _RecordsPageState extends State<RecordsPage> {
     'temperature' => '${r.text('temperature')} ℃',
     'heartRate' => '${r.text('heartRate')} 次/分',
     'bloodOxygen' => '${r.text('bloodOxygen')} %',
+    'bloodGlucose' => '${r.text('bloodGlucose')} mmol/L',
     'memory' => r.text('title', '随便记一笔'),
-    'stool' || 'urine' => selectedValues(r.text('status')).isNotEmpty
+    'stool' => selectedValues(r.text('status')).isNotEmpty
         ? selectedValues(r.text('status')).join('、')
         : '正常',
+    'urine' => () {
+      final status = selectedValues(r.text('status')).isNotEmpty
+          ? selectedValues(r.text('status')).join('、')
+          : '正常';
+      final vol = r.text('volume');
+      return vol.isNotEmpty ? '$status · $vol ml' : status;
+    }(),
     'pain' => '疼痛 ${r.text('score')} / 10 分',
     'tumorMarker' => r.text('summary').isNotEmpty
         ? r.text('summary')
@@ -1390,6 +1495,43 @@ class _RecordsPageState extends State<RecordsPage> {
           icon: isUp ? Icons.trending_up : Icons.trending_down,
         );
 
+      case 'bloodGlucose':
+        final c = double.tryParse(current.text('bloodGlucose'));
+        final p = double.tryParse(prev.text('bloodGlucose'));
+        if (c == null || p == null) return null;
+        final dv = c - p;
+        if (dv.abs() < 0.05) {
+          return _RecordDiffInfo(
+            label: '较上次持平',
+            subLabel: '前次 ${p.toStringAsFixed(1)} mmol/L',
+            trend: 'flat',
+            textColor: muted,
+            bgColor: const Color(0xFFF5F5F5),
+            borderColor: const Color(0xFFE0E0E0),
+            icon: Icons.trending_flat,
+          );
+        }
+        final isUp = dv > 0;
+        final sign = isUp ? '+' : '';
+        final isAbnormal = c < 3.9 || c > 11.1;
+        return _RecordDiffInfo(
+          label: '较上次 $sign${dv.toStringAsFixed(1)} mmol/L ${isUp ? '↑' : '↓'}',
+          subLabel: '前次 ${p.toStringAsFixed(1)} mmol/L',
+          trend: isUp ? 'up' : 'down',
+          textColor: isAbnormal
+              ? const Color(0xFFC62828)
+              : isUp
+              ? const Color(0xFF6A1B9A)
+              : const Color(0xFF00838F),
+          bgColor: isAbnormal
+              ? const Color(0xFFFFEBEE)
+              : const Color(0xFFF3E5F5),
+          borderColor: isAbnormal
+              ? const Color(0xFFFFCDD2)
+              : const Color(0xFFE1BEE7),
+          icon: isUp ? Icons.trending_up : Icons.trending_down,
+        );
+
       case 'pain':
         final c = int.tryParse(current.text('score'));
         final p = int.tryParse(prev.text('score'));
@@ -1962,5 +2104,271 @@ class _OxygenPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _OxygenPainter old) => true;
+}
+
+class BloodGlucoseChart extends StatelessWidget {
+  final List<CareRecord> records;
+  final int days;
+  const BloodGlucoseChart({super.key, required this.records, required this.days});
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, now.day - (days - 1));
+    final end = DateTime(now.year, now.month, now.day + 1);
+    final selected = records
+        .where((r) => !r.at.isBefore(start) && r.at.isBefore(end))
+        .toList()
+      ..sort((a, b) => a.at.compareTo(b.at));
+
+    if (selected.isEmpty) {
+      return const EmptyState(
+        Icons.show_chart_rounded,
+        '暂无该时段血糖记录',
+        '记录后的血糖数值将在这里连线展示，帮助评估糖代谢与用药反应',
+      );
+    }
+
+    final points = <Offset>[];
+    final labels = <String>[];
+    double sum = 0;
+    int count = 0;
+
+    if (days == 1) {
+      for (final r in selected) {
+        final val = double.tryParse(r.text('bloodGlucose'));
+        if (val != null) {
+          points.add(
+            Offset(
+              r.at.difference(start).inMinutes / (24 * 60),
+              val,
+            ),
+          );
+          sum += val;
+          count++;
+        }
+      }
+      labels.addAll(['00:00', '12:00', '24:00']);
+    } else {
+      for (var d = 0; d < days; d++) {
+        final key = dayKey(DateTime(start.year, start.month, start.day + d));
+        final values = selected
+            .where((r) => dayKey(r.at) == key)
+            .map((r) => double.tryParse(r.text('bloodGlucose')))
+            .whereType<double>()
+            .toList();
+        if (values.isNotEmpty) {
+          final avg = values.reduce((a, b) => a + b) / values.length;
+          points.add(Offset(d / (days - 1), avg));
+          sum += avg;
+          count++;
+        }
+      }
+      labels.addAll([
+        '${start.month}/${start.day}',
+        '日均值趋势',
+        '${now.month}/${now.day}',
+      ]);
+    }
+
+    final latestVal = double.tryParse(selected.last.text('bloodGlucose')) ?? 5.6;
+    final avgVal = count > 0 ? (sum / count) : latestVal;
+    double minY = 3.0;
+    double maxY = 14.0;
+    for (final p in points) {
+      if (p.dy < minY) minY = max(0.5, p.dy - 1.0);
+      if (p.dy > maxY) maxY = min(50.0, p.dy + 2.0);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Row(
+                children: [
+                  Text(
+                    '最新: ${latestVal.toStringAsFixed(1)}',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: ink,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  const Text('mmol/L', style: TextStyle(fontSize: 11, color: muted)),
+                ],
+              ),
+            ),
+            Row(
+              children: [
+                const Text('时段均值: ', style: TextStyle(fontSize: 12, color: muted)),
+                Text(
+                  avgVal.toStringAsFixed(1),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF6A1B9A),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                const Text('mmol/L', style: TextStyle(fontSize: 11, color: muted)),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 140,
+          child: CustomPaint(
+            size: Size.infinite,
+            painter: _GlucosePainter(
+              points: points,
+              days: days,
+              minY: minY,
+              maxY: maxY,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            for (final l in labels)
+              Text(l, style: const TextStyle(color: muted, fontSize: 11)),
+          ],
+        ),
+        const SizedBox(height: 6),
+        const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.info_outline, size: 12, color: muted),
+            SizedBox(width: 4),
+            Text(
+              '常规参考：空腹 3.9–6.1 · 餐后 <7.8 · 低于 3.9 注意低血糖',
+              style: TextStyle(fontSize: 11, color: muted),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _GlucosePainter extends CustomPainter {
+  final List<Offset> points;
+  final int days;
+  final double minY;
+  final double maxY;
+
+  _GlucosePainter({
+    required this.points,
+    required this.days,
+    required this.minY,
+    required this.maxY,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const leftMargin = 32.0;
+    final plotWidth = size.width - leftMargin - 10;
+    const topMargin = 12.0;
+    final plotHeight = size.height - topMargin - 16;
+
+    final gridLinePaint = Paint()
+      ..color = const Color(0xFFE8ECE7)
+      ..strokeWidth = 0.8;
+
+    final baselineNormalPaint = Paint()
+      ..color = const Color(0xFF81C784)
+      ..strokeWidth = 1
+      ..style = PaintingStyle.stroke;
+
+    final baselineWarnPaint = Paint()
+      ..color = const Color(0xFFFFB74D)
+      ..strokeWidth = 1
+      ..style = PaintingStyle.stroke;
+
+    final yRange = maxY - minY;
+    double yPos(double value) =>
+        topMargin + plotHeight * (1 - (value - minY) / yRange);
+
+    // 绘制横参考网格：低血糖线 3.9，高血糖警戒 11.1
+    final gridValues = {minY, 3.9, 7.8, 11.1, maxY}.toList()..sort();
+    for (final v in gridValues) {
+      final y = yPos(v);
+      final is39 = (v - 3.9).abs() < 0.1;
+      final is111 = (v - 11.1).abs() < 0.1;
+      final paint = is39
+          ? baselineNormalPaint
+          : is111
+          ? baselineWarnPaint
+          : gridLinePaint;
+
+      canvas.drawLine(
+        Offset(leftMargin, y),
+        Offset(leftMargin + plotWidth, y),
+        paint,
+      );
+
+      final label = TextPainter(
+        text: TextSpan(
+          text: v.toStringAsFixed(1),
+          style: TextStyle(
+            color: is39
+                ? const Color(0xFF2E7D32)
+                : is111
+                ? const Color(0xFFE65100)
+                : muted,
+            fontSize: 9.5,
+            fontWeight: is39 || is111 ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      label.paint(canvas, Offset(2, y - 6));
+    }
+
+    Offset position(Offset p) => Offset(
+      leftMargin + p.dx * plotWidth,
+      yPos(p.dy.clamp(minY, maxY)),
+    );
+
+    final linePaint = Paint()
+      ..color = const Color(0xFF6A1B9A)
+      ..strokeWidth = 2.5
+      ..strokeCap = StrokeCap.round;
+
+    final dotBorderPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+
+    for (var i = 0; i < points.length; i++) {
+      if (i > 0 &&
+          (days == 1 ||
+              points[i].dx - points[i - 1].dx <= 1 / (days - 1) + .0001)) {
+        canvas.drawLine(position(points[i - 1]), position(points[i]), linePaint);
+      }
+      final pos = position(points[i]);
+      final val = points[i].dy;
+      final dotColor = val < 3.9
+          ? const Color(0xFFD32F2F)
+          : val > 11.1
+          ? const Color(0xFFEF6C00)
+          : const Color(0xFF6A1B9A);
+
+      final dotPaint = Paint()
+        ..color = dotColor
+        ..style = PaintingStyle.fill;
+
+      canvas.drawCircle(pos, 5, dotPaint);
+      canvas.drawCircle(pos, 5, dotBorderPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _GlucosePainter old) => true;
 }
 

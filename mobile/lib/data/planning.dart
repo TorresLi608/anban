@@ -7,6 +7,7 @@ const healthKinds = [
   'temperature',
   'heartRate',
   'bloodOxygen',
+  'bloodGlucose',
   'stool',
   'urine',
   'pain',

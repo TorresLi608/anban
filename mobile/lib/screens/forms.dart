@@ -130,6 +130,16 @@ const specifications = <String, List<FieldSpec>>{
     ),
     FieldSpec('note', '补充说明', type: 'multiline'),
   ],
+  'bloodGlucose': [
+    FieldSpec(
+      'bloodGlucose',
+      '血糖值（mmol/L）*',
+      type: 'number',
+      required: true,
+      hint: '如：5.6',
+    ),
+    FieldSpec('note', '补充说明', type: 'multiline'),
+  ],
   'memory': [
     FieldSpec('title', '标题', initial: '随便记一笔'),
     FieldSpec('note', '想记录的内容', type: 'multiline'),
@@ -140,6 +150,12 @@ const specifications = <String, List<FieldSpec>>{
   ],
   'urine': [
     FieldSpec('status', '排便情况 *', type: 'multi', required: true),
+    FieldSpec(
+      'volume',
+      '排尿量（ml）',
+      type: 'number',
+      hint: '如：200',
+    ),
     FieldSpec('color', '颜色', type: 'multi'),
     FieldSpec('appearance', '性状', type: 'multi'),
     FieldSpec('note', '补充说明', type: 'multiline'),
@@ -178,6 +194,7 @@ const kindNames = {
   'temperature': '体温',
   'heartRate': '心率',
   'bloodOxygen': '血氧',
+  'bloodGlucose': '血糖',
   'memory': '随便记一笔',
   'stool': '大便',
   'urine': '小便',
@@ -262,6 +279,7 @@ class _RecordFormState extends State<RecordForm> {
   bool get supportsPhotos => [
     'weight',
     'bloodOxygen',
+    'bloodGlucose',
     'stool',
     'urine',
     'journey',
@@ -1132,6 +1150,98 @@ class _RecordFormState extends State<RecordForm> {
                 urgent: curVal <= 93,
               ),
             ),
+        ],
+      );
+    } else if (spec.key == 'bloodGlucose') {
+      final presets = ['4.5', '5.6', '6.8', '7.8', '9.0', '11.0'];
+      final curVal = double.tryParse(c.text);
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              for (final p in presets)
+                ActionChip(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  label: Text('$p', style: const TextStyle(fontSize: 11)),
+                  onPressed: saving ? null : () => setState(() => c.text = p),
+                ),
+              ActionChip(
+                visualDensity: VisualDensity.compact,
+                avatar: const Icon(Icons.remove, size: 14),
+                label: const Text('0.1', style: TextStyle(fontSize: 11)),
+                onPressed: saving
+                    ? null
+                    : () {
+                        final cur = double.tryParse(c.text) ?? 5.6;
+                        setState(() => c.text = (cur - 0.1).clamp(0.5, 50.0).toStringAsFixed(1));
+                      },
+              ),
+              ActionChip(
+                visualDensity: VisualDensity.compact,
+                avatar: const Icon(Icons.add, size: 14),
+                label: const Text('0.1', style: TextStyle(fontSize: 11)),
+                onPressed: saving
+                    ? null
+                    : () {
+                        final cur = double.tryParse(c.text) ?? 5.6;
+                        setState(() => c.text = (cur + 0.1).clamp(0.5, 50.0).toStringAsFixed(1));
+                      },
+              ),
+            ],
+          ),
+          if (curVal != null && (curVal < 3.9 || curVal > 11.1))
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Note(
+                curVal < 3.9
+                    ? '血糖偏低（<3.9 mmol/L），如伴有心慌、出冷汗，请立即补充糖分或就医！'
+                    : '血糖偏高（>11.1 mmol/L），请注意清淡饮食并密切监测血糖。',
+                urgent: curVal <= 2.8 || curVal >= 16.7,
+              ),
+            ),
+        ],
+      );
+    } else if (spec.key == 'volume') {
+      final presets = ['100', '200', '300', '500'];
+      return Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          for (final p in presets)
+            ActionChip(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              label: Text('$p ml', style: const TextStyle(fontSize: 11)),
+              onPressed: saving ? null : () => setState(() => c.text = p),
+            ),
+          ActionChip(
+            visualDensity: VisualDensity.compact,
+            avatar: const Icon(Icons.remove, size: 14),
+            label: const Text('50ml', style: TextStyle(fontSize: 11)),
+            onPressed: saving
+                ? null
+                : () {
+                    final cur = int.tryParse(c.text) ?? 200;
+                    setState(() => c.text = (cur - 50).clamp(10, 5000).toString());
+                  },
+          ),
+          ActionChip(
+            visualDensity: VisualDensity.compact,
+            avatar: const Icon(Icons.add, size: 14),
+            label: const Text('50ml', style: TextStyle(fontSize: 11)),
+            onPressed: saving
+                ? null
+                : () {
+                    final cur = int.tryParse(c.text) ?? 200;
+                    setState(() => c.text = (cur + 50).clamp(10, 5000).toString());
+                  },
+          ),
         ],
       );
     } else if (spec.key == 'weight') {

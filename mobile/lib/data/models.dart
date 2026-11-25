@@ -12,6 +12,7 @@ const recordKinds = [
   'temperature',
   'heartRate',
   'bloodOxygen',
+  'bloodGlucose',
   'stool',
   'urine',
   'journey',
@@ -176,9 +177,24 @@ class CareRecord {
         throw const FormatException('请填写有效血氧饱和度（50–100%）');
       }
     }
+    if (kind == 'bloodGlucose') {
+      final glucose = double.tryParse(text('bloodGlucose'));
+      if (glucose == null ||
+          !glucose.isFinite ||
+          glucose < 0.5 ||
+          glucose > 50) {
+        throw const FormatException('请填写有效血糖值（0.5–50 mmol/L）');
+      }
+    }
     if (['stool', 'urine'].contains(kind) &&
         selectedValues(text('status')).isEmpty) {
       throw const FormatException('排便情况为必填项');
+    }
+    if (kind == 'urine' && text('volume').isNotEmpty) {
+      final volume = int.tryParse(text('volume'));
+      if (volume == null || volume <= 0 || volume > 5000) {
+        throw const FormatException('请填写有效排尿量（1–5000 ml）');
+      }
     }
     if (['journey', 'journeyEntry'].contains(kind)) {
       if (kind == 'journey' &&
